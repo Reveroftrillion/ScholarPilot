@@ -1,0 +1,42 @@
+{
+  "case_id": "L01",
+  "mode": "offline_fixture",
+  "model": "offline-example-no-model",
+  "request_context": {
+    "book": "bishop",
+    "pdf_page": 48,
+    "question": "베이즈 정리를 설명해 주세요",
+    "selected_text": null,
+    "history": []
+  },
+  "retrieved_sources": [],
+  "agent_tools": [],
+  "response": "기록 형식 예시: 실제 모델 응답이 아닙니다.",
+  "elapsed_seconds": 0,
+  "usage": {
+    "input_tokens": null,
+    "output_tokens": null
+  },
+  "cost_estimate": {
+    "amount": null,
+    "currency": null,
+    "input_rate_per_million": null,
+    "output_rate_per_million": null,
+    "pricing_date": null
+  },
+  "evaluation": {
+    "reviewer": null,
+    "scores": {
+      "grounding": null,
+      "symbols": null,
+      "derivation": null,
+      "assumptions": null,
+      "example": null,
+      "prerequisites": null,
+      "citations": null,
+      "korean_clarity": null,
+      "uncertainty": null
+    },
+    "notes": "평가 전"
+  }
+}

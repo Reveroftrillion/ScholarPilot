@@ -1,0 +1,362 @@
+[
+  {
+    "id": "L01",
+    "question": "베이즈 정리를 곱의 법칙에서 어떻게 유도하나요?",
+    "book": "bishop",
+    "pdf_page": 48,
+    "concept": "Bayes theorem",
+    "evidence_anchors": [
+      "product rule",
+      "Bayes"
+    ],
+    "expected_elements": "곱의 법칙과 정규화 분모, 사전·사후 확률",
+    "math_required": true,
+    "prerequisite_required": true,
+    "annotation": "PDF 페이지 본문 검토; 예상 설명은 평가 기준이며 답안 아님"
+  },
+  {
+    "id": "L02",
+    "question": "Why does conditioning change the sample space?",
+    "book": "bishop",
+    "pdf_page": 47,
+    "concept": "conditional probability",
+    "evidence_anchors": [
+      "conditional",
+      "probability"
+    ],
+    "expected_elements": "조건부확률과 결합확률의 관계",
+    "math_required": true,
+    "prerequisite_required": true,
+    "annotation": "PDF 페이지 본문 검토; 예상 설명은 평가 기준이며 답안 아님"
+  },
+  {
+    "id": "L03",
+    "question": "낮은 유병률에서 양성 판정이 곧 질병을 뜻하지 않는 이유는?",
+    "book": "bishop",
+    "pdf_page": 50,
+    "concept": "medical screening",
+    "evidence_anchors": [
+      "screening",
+      "cancer"
+    ],
+    "expected_elements": "사전확률과 검사 양성의 의미",
+    "math_required": true,
+    "prerequisite_required": true,
+    "annotation": "PDF 페이지 본문 검토; 예상 설명은 평가 기준이며 답안 아님"
+  },
+  {
+    "id": "L04",
+    "question": "여러 입력으로 연속값을 예측하는 모델은 무엇을 학습하나요?",
+    "book": "bishop",
+    "pdf_page": 131,
+    "concept": "linear regression",
+    "evidence_anchors": [
+      "regression",
+      "parameters"
+    ],
+    "expected_elements": "입력 벡터, 목표 변수, 가중치",
+    "math_required": true,
+    "prerequisite_required": false,
+    "annotation": "PDF 페이지 본문 검토; 예상 설명은 평가 기준이며 답안 아님"
+  },
+  {
+    "id": "L05",
+    "question": "Why can a model linear in its parameters still use nonlinear input features?",
+    "book": "bishop",
+    "pdf_page": 132,
+    "concept": "basis functions",
+    "evidence_anchors": [
+      "basis function",
+      "linear"
+    ],
+    "expected_elements": "기저 함수와 파라미터에 대한 선형성",
+    "math_required": true,
+    "prerequisite_required": true,
+    "annotation": "PDF 페이지 본문 검토; 예상 설명은 평가 기준이며 답안 아님"
+  },
+  {
+    "id": "L06",
+    "question": "다항식과 가우시안 기저 함수는 어떻게 다른가요?",
+    "book": "bishop",
+    "pdf_page": 133,
+    "concept": "basis functions",
+    "evidence_anchors": [
+      "Gaussian",
+      "polynomial"
+    ],
+    "expected_elements": "서로 다른 기저 함수의 예",
+    "math_required": true,
+    "prerequisite_required": true,
+    "annotation": "PDF 페이지 본문 검토; 예상 설명은 평가 기준이며 답안 아님"
+  },
+  {
+    "id": "L07",
+    "question": "How does gradient information help optimize a deep network?",
+    "book": "bishop",
+    "pdf_page": 231,
+    "concept": "gradient descent",
+    "evidence_anchors": [
+      "gradient",
+      "backpropagation"
+    ],
+    "expected_elements": "오차 함수의 기울기와 최적화",
+    "math_required": true,
+    "prerequisite_required": true,
+    "annotation": "PDF 페이지 본문 검토; 예상 설명은 평가 기준이며 답안 아님"
+  },
+  {
+    "id": "L08",
+    "question": "전체 데이터 대신 한 관측치씩 가중치를 바꾸는 절차를 설명해 줘",
+    "book": "bishop",
+    "pdf_page": 232,
+    "concept": "stochastic gradient descent",
+    "evidence_anchors": [
+      "Stochastic gradient descent",
+      "learning rate"
+    ],
+    "expected_elements": "표본별 오차, 학습률, 가중치 갱신",
+    "math_required": true,
+    "prerequisite_required": true,
+    "annotation": "PDF 페이지 본문 검토; 예상 설명은 평가 기준이며 답안 아님"
+  },
+  {
+    "id": "L09",
+    "question": "What does backpropagation compute and which direction does information travel?",
+    "book": "bishop",
+    "pdf_page": 250,
+    "concept": "backpropagation",
+    "evidence_anchors": [
+      "gradient",
+      "backpropagation"
+    ],
+    "expected_elements": "오차 함수 기울기와 역방향 전달",
+    "math_required": true,
+    "prerequisite_required": true,
+    "annotation": "PDF 페이지 본문 검토; 예상 설명은 평가 기준이며 답안 아님"
+  },
+  {
+    "id": "L10",
+    "question": "은닉층의 오차 신호를 다음 층에서 구하는 이유는?",
+    "book": "bishop",
+    "pdf_page": 253,
+    "concept": "chain rule",
+    "evidence_anchors": [
+      "chain rule",
+      "hidden"
+    ],
+    "expected_elements": "연쇄 법칙과 은닉 유닛 오차 신호",
+    "math_required": true,
+    "prerequisite_required": true,
+    "annotation": "PDF 페이지 본문 검토; 예상 설명은 평가 기준이며 답안 아님"
+  },
+  {
+    "id": "L11",
+    "question": "Explain the role of stored activations during the backward pass.",
+    "book": "systems",
+    "pdf_page": 379,
+    "concept": "backpropagation",
+    "evidence_anchors": [
+      "backward pass",
+      "activations"
+    ],
+    "expected_elements": "활성값 보관과 연쇄 법칙, 메모리 요구량",
+    "math_required": true,
+    "prerequisite_required": true,
+    "annotation": "PDF 페이지 본문 검토; 예상 설명은 평가 기준이며 답안 아님"
+  },
+  {
+    "id": "L12",
+    "question": "비선형 활성화 함수에는 어떤 종류가 있나요?",
+    "book": "bishop",
+    "pdf_page": 202,
+    "concept": "activation function",
+    "evidence_anchors": [
+      "activation functions",
+      "ReLU"
+    ],
+    "expected_elements": "tanh, ReLU 등 비선형 활성화",
+    "math_required": true,
+    "prerequisite_required": false,
+    "annotation": "PDF 페이지 본문 검토; 예상 설명은 평가 기준이며 답안 아님"
+  },
+  {
+    "id": "L13",
+    "question": "Why does a neural network need an activation function?",
+    "book": "systems",
+    "pdf_page": 148,
+    "concept": "neural networks",
+    "evidence_anchors": [
+      "Activation",
+      "non-linear"
+    ],
+    "expected_elements": "활성 함수와 비선형 관계",
+    "math_required": true,
+    "prerequisite_required": true,
+    "annotation": "PDF 페이지 본문 검토; 예상 설명은 평가 기준이며 답안 아님"
+  },
+  {
+    "id": "L14",
+    "question": "특징 맵에서 2×2 max pooling은 무엇을 바꾸나요?",
+    "book": "bishop",
+    "pdf_page": 313,
+    "concept": "CNN pooling",
+    "evidence_anchors": [
+      "max-pooling",
+      "feature map"
+    ],
+    "expected_elements": "최댓값 선택과 특징 맵 차원 감소",
+    "math_required": false,
+    "prerequisite_required": true,
+    "annotation": "PDF 페이지 본문 검토; 예상 설명은 평가 기준이며 답안 아님"
+  },
+  {
+    "id": "L15",
+    "question": "Why can CNN filters benefit from spatial reuse?",
+    "book": "systems",
+    "pdf_page": 655,
+    "concept": "CNN systems",
+    "evidence_anchors": [
+      "CNNs",
+      "reuse filters"
+    ],
+    "expected_elements": "공간 위치에 걸친 필터 재사용",
+    "math_required": false,
+    "prerequisite_required": true,
+    "annotation": "PDF 페이지 본문 검토; 예상 설명은 평가 기준이며 답안 아님"
+  },
+  {
+    "id": "L16",
+    "question": "How are input tokens combined with attention weights?",
+    "book": "bishop",
+    "pdf_page": 378,
+    "concept": "attention",
+    "evidence_anchors": [
+      "attention weights",
+      "non-negative"
+    ],
+    "expected_elements": "가중 결합, 비음수 및 정규화",
+    "math_required": true,
+    "prerequisite_required": true,
+    "annotation": "PDF 페이지 본문 검토; 예상 설명은 평가 기준이며 답안 아님"
+  },
+  {
+    "id": "L17",
+    "question": "자기 주의에서 softmax 전에 왜 크기를 조절하나요?",
+    "book": "bishop",
+    "pdf_page": 382,
+    "concept": "scaled self attention",
+    "evidence_anchors": [
+      "softmax",
+      "scale"
+    ],
+    "expected_elements": "query, key, value와 스케일링",
+    "math_required": true,
+    "prerequisite_required": true,
+    "annotation": "PDF 페이지 본문 검토; 예상 설명은 평가 기준이며 답안 아님"
+  },
+  {
+    "id": "L18",
+    "question": "What memory cost is introduced by dynamically generated attention weights?",
+    "book": "systems",
+    "pdf_page": 201,
+    "concept": "transformer",
+    "evidence_anchors": [
+      "attention weights",
+      "memory"
+    ],
+    "expected_elements": "동적 가중치와 중간 메모리",
+    "math_required": false,
+    "prerequisite_required": true,
+    "annotation": "PDF 페이지 본문 검토; 예상 설명은 평가 기준이며 답안 아님"
+  },
+  {
+    "id": "L19",
+    "question": "학습이 끝난 뒤 수치 정밀도를 낮추는 접근은?",
+    "book": "systems",
+    "pdf_page": 534,
+    "concept": "quantization",
+    "evidence_anchors": [
+      "Post-training quantization",
+      "precision"
+    ],
+    "expected_elements": "학습 후 정밀도 감소와 추론 최적화",
+    "math_required": false,
+    "prerequisite_required": true,
+    "annotation": "PDF 페이지 본문 검토; 예상 설명은 평가 기준이며 답안 아님"
+  },
+  {
+    "id": "L20",
+    "question": "PTQ가 정확도를 떨어뜨릴 때 QAT는 어떤 대안인가요?",
+    "book": "systems",
+    "pdf_page": 543,
+    "concept": "PTQ QAT",
+    "evidence_anchors": [
+      "PTQ",
+      "Quantization-Aware Training"
+    ],
+    "expected_elements": "학습 후 양자화의 한계와 QAT",
+    "math_required": false,
+    "prerequisite_required": true,
+    "annotation": "PDF 페이지 본문 검토; 예상 설명은 평가 기준이며 답안 아님"
+  },
+  {
+    "id": "L21",
+    "question": "What additional cost does simulating quantization during training introduce?",
+    "book": "systems",
+    "pdf_page": 545,
+    "concept": "QAT tradeoff",
+    "evidence_anchors": [
+      "computational overhead",
+      "training"
+    ],
+    "expected_elements": "훈련 오버헤드와 정확도·효율 절충",
+    "math_required": false,
+    "prerequisite_required": true,
+    "annotation": "PDF 페이지 본문 검토; 예상 설명은 평가 기준이며 답안 아님"
+  },
+  {
+    "id": "L22",
+    "question": "Why can data movement limit neural network acceleration?",
+    "book": "systems",
+    "pdf_page": 616,
+    "concept": "memory bottleneck",
+    "evidence_anchors": [
+      "Memory",
+      "bandwidth"
+    ],
+    "expected_elements": "메모리 대역폭과 데이터 이동",
+    "math_required": false,
+    "prerequisite_required": true,
+    "annotation": "PDF 페이지 본문 검토; 예상 설명은 평가 기준이며 답안 아님"
+  },
+  {
+    "id": "L23",
+    "question": "클라우드 의존도를 줄이는 edge AI의 시스템 관점은?",
+    "book": "systems",
+    "pdf_page": 988,
+    "concept": "edge ML",
+    "evidence_anchors": [
+      "edge AI",
+      "cloud"
+    ],
+    "expected_elements": "엣지 추론과 클라우드 의존도",
+    "math_required": false,
+    "prerequisite_required": false,
+    "annotation": "PDF 페이지 본문 검토; 예상 설명은 평가 기준이며 답안 아님"
+  },
+  {
+    "id": "L24",
+    "question": "How should responsiveness of inference systems be measured?",
+    "book": "systems",
+    "pdf_page": 726,
+    "concept": "inference latency",
+    "evidence_anchors": [
+      "Latency",
+      "inference"
+    ],
+    "expected_elements": "지연 시간과 추론 벤치마크",
+    "math_required": false,
+    "prerequisite_required": false,
+    "annotation": "PDF 페이지 본문 검토; 예상 설명은 평가 기준이며 답안 아님"
+  }
+]

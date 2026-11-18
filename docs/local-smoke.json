@@ -1,0 +1,34 @@
+{
+  "model": "qwen3:1.7b",
+  "response": "베이즈 정리는 확률 이론에서 사용되는 중요한 원리로, 특정 사건이 발생했을 때 그 사건이 어떤 원인에 의해 발생했는지의 확률을 계산하는 방법을 의미합니다. 이 정리는 사전 확률과 조건 확률을 이용하여, 업데이트된 정보를 바탕으로 확률을 재구성하는 데 사용됩니다.",
+  "elapsed_seconds": 9.543,
+  "load_seconds": 5.0853211,
+  "prompt_tokens": 36,
+  "generated_tokens": 87,
+  "generation_seconds": 3.379431,
+  "loaded_models": {
+    "models": [
+      {
+        "name": "qwen3:1.7b",
+        "model": "qwen3:1.7b",
+        "size": 1886629395,
+        "digest": "8f68893c685c3ddff2aa3fffce2aa60a30bb2da65ca488b61fff134a4d1730e7",
+        "details": {
+          "parent_model": "",
+          "format": "gguf",
+          "family": "qwen3",
+          "families": [
+            "qwen3"
+          ],
+          "parameter_size": "2.0B",
+          "quantization_level": "Q4_K_M"
+        },
+        "expires_at": "2026-11-17T18:02:54.0115391+09:00",
+        "size_vram": 0,
+        "context_length": 4096,
+        "runner": "llamacpp"
+      }
+    ]
+  },
+  "available_ram_bytes": 321654784
+}
