@@ -4,6 +4,8 @@ import json
 import sys
 import threading
 import time
+import psutil
+import httpx
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from backend.config import ROOT,settings
@@ -23,11 +25,28 @@ def main():
     delegate=OllamaProvider();ledger=target/'local-model-calls.json'
     records=json.loads(ledger.read_text(encoding='utf-8')) if ledger.exists() else []
     lock=threading.Lock()
+    def save():
+        temporary=ledger.with_suffix('.tmp')
+        temporary.write_text(json.dumps(safe_copy(records),ensure_ascii=False,indent=2),encoding='utf-8')
+        temporary.replace(ledger)
+    def memory():
+        names={'ollama.exe','llama-server.exe','ollama','llama-server'}
+        processes=[]
+        for process in psutil.process_iter(['pid','name','memory_info']):
+            try:
+                if (process.info['name'] or '').casefold() in names:processes.append({'pid':process.pid,'name':process.info['name'],'rss_bytes':process.info['memory_info'].rss})
+            except (psutil.Error,AttributeError):pass
+        return {'available_bytes':psutil.virtual_memory().available,'processes':processes}
     class Recorded:
         local=True
+        compact_workflow=True
+        reliable_workflow=True
+        @property
+        def last_usage(self):return getattr(delegate,'last_usage',None)
         def respond(self,messages,tools):
             with lock:
-                start=time.monotonic();record={'model':settings.ollama_model,'status':'started','input':safe_copy(messages)};records.append(record)
+                start=time.monotonic();before=len(delegate.metrics)
+                record={'model':settings.ollama_model,'status':'started','input':safe_copy(messages),'memory_before':memory()};records.append(record);save()
                 try:
                     response=delegate.respond(messages,tools)
                     record.update(status='completed',response=response.output_text,tools=[o.name for o in response.output],metrics=delegate.metrics[-1])
@@ -37,7 +56,14 @@ def main():
                     raise
                 finally:
                     record['elapsed']=round(time.monotonic()-start,3)
-                    ledger.write_text(json.dumps(safe_copy(records),ensure_ascii=False,indent=2),encoding='utf-8')
+                    if len(delegate.metrics)>before:record['metrics']=delegate.metrics[-1]
+                    record['memory_after']=memory()
+                    try:
+                        with httpx.Client(timeout=2,trust_env=False) as client:
+                            loaded=client.get(delegate.base+'/api/ps').raise_for_status().json()
+                        record['loaded_models']=[{k:m.get(k) for k in ('name','size','size_vram','context_length')} for m in loaded.get('models',[])]
+                    except (httpx.HTTPError,ValueError):record['loaded_models']=None
+                    save()
     import backend.agent
     backend.agent.OllamaProvider=lambda:Recorded()
     from backend.main import app

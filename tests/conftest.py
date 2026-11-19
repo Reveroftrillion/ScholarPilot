@@ -2,10 +2,27 @@ import pytest
 import pymupdf
 import time
 import warnings
+from contextlib import contextmanager
 from fastapi.testclient import TestClient
 from backend.config import settings
 from backend.main import app
 from backend.database import init_db
+
+
+@contextmanager
+def restart_test_client(application):
+    """Retry only known Windows loop startup, never requests/assertions."""
+    instance=TestClient(application)
+    for attempt in range(3):
+        try:
+            instance.__enter__()
+            break
+        except OSError as exc:
+            if getattr(exc,'winerror',None)!=10014 or attempt==2:raise
+            warnings.warn('Windows socketpair restart failed (10014); retrying startup only.')
+            time.sleep(.25)
+    try:yield instance
+    finally:instance.__exit__(None,None,None)
 
 @pytest.fixture(scope='session')
 def http_client(tmp_path_factory):

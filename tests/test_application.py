@@ -3,8 +3,7 @@ import pymupdf
 from backend.database import one, many
 from backend.learning import grade
 from backend.main import app
-from fastapi.testclient import TestClient
-from .conftest import pdf_bytes
+from .conftest import pdf_bytes,restart_test_client
 
 def test_upload_reader_sources(client,book):
     assert book['status']=='ready'
@@ -52,7 +51,7 @@ def test_agent_pause_resume_persistence(client,book):
     assert client.get('/api/dashboard').json()['mastery'][0]['total']==1
     client.put(f"/api/books/{book['id']}/position",json={'page':2})
     # New app lifespan / SQLite connection restores all state.
-    with TestClient(app) as restarted:
+    with restart_test_client(app) as restarted:
         assert restarted.get('/api/books').json()[0]['last_page']==2
         assert restarted.get('/api/dashboard').json()['mastery'][0]['total']==1
         assert len(restarted.get(f"/api/books/{book['id']}/history").json())==3

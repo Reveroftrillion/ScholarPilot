@@ -70,6 +70,10 @@ def init_db():
           concept_id TEXT PRIMARY KEY REFERENCES concepts(id) ON DELETE CASCADE,
           correct INTEGER DEFAULT 0, total INTEGER DEFAULT 0, streak INTEGER DEFAULT 0,
           status TEXT DEFAULT '학습 중', updated TEXT DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS attempt_reviews (
+          id TEXT PRIMARY KEY, attempt_id TEXT REFERENCES attempts(id) ON DELETE CASCADE,
+          correct INTEGER NOT NULL, confirmed_key TEXT NOT NULL, note TEXT,
+          created TEXT DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS visits (
           book_id TEXT REFERENCES books(id) ON DELETE CASCADE, page INTEGER,
           PRIMARY KEY(book_id,page));

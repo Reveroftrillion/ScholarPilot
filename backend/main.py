@@ -3,7 +3,7 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, HTTPException, BackgroundTasks, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse,Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from .config import settings, ROOT
@@ -188,14 +188,75 @@ def search_endpoint(payload: SearchRequest): return search(payload.query,payload
 
 @app.post('/api/chat')
 def chat(payload: ChatRequest):
+    validate_chat(payload)
+    try: return Agent(payload).run()
+    except ValueError as exc: raise HTTPException(422,str(exc))
+
+def validate_chat(payload):
     book = book_or_404(payload.book_id)
     if payload.page>book['pages']: raise HTTPException(422,'페이지 범위를 벗어났습니다.')
     if book['status']!='ready': raise HTTPException(409,'텍스트 인덱싱이 완료된 교과서를 선택하세요.')
     if payload.scope=='selected' and not payload.book_ids: raise HTTPException(422,'검색할 교과서를 선택하세요.')
     for bid in payload.book_ids: book_or_404(bid)
     if payload.quiz_id:payload.strategy='agent'
-    try: return Agent(payload).run()
-    except ValueError as exc: raise HTTPException(422,str(exc))
+
+@app.post('/api/chat/jobs',status_code=202)
+def chat_job(payload:ChatRequest):
+    validate_chat(payload)
+    from . import jobs
+    try:return jobs.submit(lambda progress:Agent(payload,progress=progress).run())
+    except ValueError as exc:raise HTTPException(409,str(exc))
+
+@app.get('/api/chat/jobs/{job_id}')
+def chat_job_status(job_id:str):
+    from . import jobs
+    result=jobs.get(job_id)
+    if result is None:raise HTTPException(404,'작업이 없거나 서버가 재시작됐습니다. 저장된 대화를 확인하세요.')
+    return result
+
+@app.get('/api/books/{book_id}/pages/{page}/math-preview')
+def math_preview(book_id:str,page:int):
+    book=book_or_404(book_id)
+    if not 1<=page<=book['pages']:raise HTTPException(422,'페이지 범위를 벗어났습니다.')
+    import pymupdf
+    from .pdf_math import fraction_hints
+    with pymupdf.open(data_path()/'pdfs'/f'{book_id}.pdf') as doc:
+        hints=fraction_hints(doc[page-1])
+    return {'book_id':book_id,'page':page,'status':'unconfirmed_extraction',
+            'warning':'분수 배치 후보일 뿐 PDF 일치·첨자·적분 기호를 인증하지 않습니다. 원본을 대조하세요.',
+            'candidates':hints,'image_url':f'/api/books/{book_id}/pages/{page}/math-image'}
+
+@app.get('/api/books/{book_id}/pages/{page}/math-image')
+def math_image(book_id:str,page:int,region:int|None=None):
+    book=book_or_404(book_id)
+    if not 1<=page<=book['pages']:raise HTTPException(422,'페이지 범위를 벗어났습니다.')
+    import pymupdf
+    from .pdf_math import fraction_hints
+    with pymupdf.open(data_path()/'pdfs'/f'{book_id}.pdf') as doc:
+        p=doc[page-1];clip=None
+        if region is not None:
+            hints=fraction_hints(p)
+            if not 0<=region<len(hints):raise HTTPException(422,'수식 영역이 없습니다.')
+            clip=pymupdf.Rect(hints[region]['region'])
+        image=p.get_pixmap(matrix=pymupdf.Matrix(1.3,1.3),clip=clip).tobytes('png')
+    return Response(image,media_type='image/png',headers={'Cache-Control':'private, max-age=60'})
+
+class ManualReview(BaseModel):
+    correct:bool
+    confirmed_key:str=Field(min_length=1,max_length=1000)
+    confirm_key:bool
+    note:str=Field(default='',max_length=1000)
+
+@app.post('/api/attempts/{attempt_id}/review')
+def manual_review(attempt_id:str,payload:ManualReview):
+    if not payload.confirm_key:raise HTTPException(422,'원문과 정답을 확인했다는 동의가 필요합니다.')
+    from .learning import review_attempt
+    try:return review_attempt(attempt_id,payload.correct,payload.confirmed_key,payload.note)
+    except ValueError as exc:raise HTTPException(404,str(exc))
+
+@app.get('/api/attempts/{attempt_id}/review')
+def latest_manual_review(attempt_id:str):
+    return {'review':one('SELECT id,correct,note,created FROM attempt_reviews WHERE attempt_id=? ORDER BY rowid DESC LIMIT 1',(attempt_id,))}
 
 @app.get('/api/books/{book_id}/history')
 def book_history(book_id: str):
@@ -206,7 +267,9 @@ def book_history(book_id: str):
 @app.get('/api/dashboard')
 def dashboard():
     mastery = many('SELECT m.*,c.name,c.book_id,b.title FROM mastery m JOIN concepts c ON c.id=m.concept_id JOIN books b ON b.id=c.book_id ORDER BY m.updated DESC')
-    attempts = many('SELECT a.correct,a.uncertain,a.created,c.name,b.title FROM attempts a JOIN quizzes q ON q.id=a.quiz_id JOIN concepts c ON c.id=q.concept_id JOIN books b ON b.id=c.book_id ORDER BY a.created DESC LIMIT 30')
+    attempts = many('''SELECT COALESCE((SELECT correct FROM attempt_reviews v WHERE v.attempt_id=a.id ORDER BY v.rowid DESC LIMIT 1),a.correct) correct,
+       CASE WHEN EXISTS(SELECT 1 FROM attempt_reviews v WHERE v.attempt_id=a.id) THEN 0 ELSE a.uncertain END uncertain,
+       a.created,c.name,b.title FROM attempts a JOIN quizzes q ON q.id=a.quiz_id JOIN concepts c ON c.id=q.concept_id JOIN books b ON b.id=c.book_id ORDER BY a.created DESC LIMIT 30''')
     graded = [a for a in attempts if not a['uncertain']]
     return {'books':books(),'mastery':mastery,'attempts':attempts,
             'accuracy':round(sum(a['correct'] for a in graded)/len(graded)*100) if graded else None,

@@ -16,6 +16,15 @@ def test_bibliography_is_ranked_below_equivalent_explanation():
     reference={**source,'section':'Bibliography'}
     assert _rank(source,['backpropagation'],None)>_rank(reference,['backpropagation'],None)
 
+
+def test_contents_and_table_heading_rank_below_explanatory_evidence():
+    source={'text':'PTQ reduces numerical precision after training while QAT adapts the model during training to preserve accuracy.',
+            'section':'PTQ and QAT Strategies','rank':-20,'page':10}
+    toc={**source,'text':'PTQ . . . 12\nQAT . . . 13\nPTQ vs QAT . . . 14'}
+    heading={**source,'text':'Aspect QAT PTQ','rank':-60}
+    assert _rank(source,['ptq','qat'],None)>_rank(toc,['ptq','qat'],None)
+    assert _rank(source,['ptq','qat'],None)>_rank(heading,['ptq','qat'],None)
+
 def test_irrelevant_single_word_match_is_rejected(client,book):
     assert search('conditional optimization',[book['id']])==[]
     assert search('gradient descent',[book['id']])

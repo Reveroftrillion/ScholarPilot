@@ -14,6 +14,8 @@ with httpx.Client(base_url=a.base,timeout=900,trust_env=False) as c:
     req={'book_id':book['id'],'page':48,'message':'이 페이지의 베이즈 정리를 한국어로 쉽게 설명하고, 곱의 법칙을 이용한 수식 유도와 숫자 예제를 보여줘.','scope':'current'}
     if a.scenario in ('B','grade','D'):
         initial=json.loads((directory/'scenario-A.json').read_text(encoding='utf-8'))['run'];req['session_id']=initial['session_id']
+        if a.scenario=='D' and (directory/'scenario-B.json').exists():
+            req['session_id']=json.loads((directory/'scenario-B.json').read_text(encoding='utf-8'))['run']['session_id']
     if a.scenario=='B':req['message']='아직 조건부확률이 이해가 안 돼. 선수 개념을 검색하고 설명한 다음, 내가 부족한 부분을 확인할 단답형 문제를 하나 내고 답안을 기다려 줘.'
     if a.scenario=='grade':
         diagnosis=json.loads((directory/'scenario-B.json').read_text(encoding='utf-8'))['run'];quiz=diagnosis['quiz']

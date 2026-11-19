@@ -35,12 +35,30 @@ def public_quiz(qid):
     if not row:
         raise ValueError('퀴즈를 찾을 수 없습니다.')
     payload = json.loads(row['payload'])
-    return {'id':qid, **{k:v for k,v in payload.items() if k not in ('answer','accepted','explanation')}}
+    public={k:v for k,v in payload.items() if k not in ('answer','accepted','explanation','_verification')}
+    if '_verification' in payload:
+        public['verification']={k:v for k,v in payload['_verification'].items() if k in ('status','measurement')}
+        public['givens']=payload['_verification'].get('bindings',{})
+    return {'id':qid, **public}
 
 def normalize(value):
     return re.sub(r'[\W_]+', '', str(value).casefold())
 
-def grade(payload, answer):
+def grade(payload, answer,require_verified=False):
+    key_verified=True
+    if require_verified:
+        verification=payload.get('_verification',{})
+        key_verified=verification.get('status') in ('verified_calculation','verified_source_recall')
+        if verification.get('status')=='verified_calculation':
+            from .math_verification import verify
+            check=verify({'expression':verification['expression'],'bindings':verification.get('bindings',{})})
+            key_verified=check['status']=='verified_calculation' and math.isclose(check['value'],float(payload['answer']),rel_tol=1e-10,abs_tol=1e-12)
+        if not key_verified:
+            return {'correct':False,'uncertain':True,'key_verified':False,'answer':payload['answer'],
+                'explanation':'AI가 제시한 정답·해설의 타당성이 확인되지 않아 채점을 확정하지 않았습니다. 원문과 정답 후보를 비교하세요.',
+                'cause':'검증되지 않은 문제 기준','next_action':'원문을 확인한 뒤 수동 확인을 선택하세요. 이해도에 반영하지 않았습니다.',
+                'grading':'정답 기준 미검증 · 이해도 미반영'}
+        payload=dict(payload,accepted=verification.get('aliases',[]))
     if payload['kind'] == 'numeric':
         try:
             value = float(answer)
@@ -53,20 +71,25 @@ def grade(payload, answer):
         uncertain = payload['kind']=='short' and not correct
     cause = None if correct else ('표현이 다른 단답형: 자동 판단 불확실' if uncertain else ('계산 과정 확인' if payload['kind']=='numeric' else '개념 또는 선수 지식 복습'))
     return {'correct':correct,'uncertain':uncertain,'answer':payload['answer'], 'explanation':payload['explanation'],'cause':cause,
+            **({'key_verified':key_verified,'grading':'독립 계산 또는 확인된 원문 용어 비교'} if require_verified else {}),
             'next_action':'다음 개념으로 진행' if correct else ('수동으로 정답과 비교하세요. 이해도는 낮추지 않았습니다.' if uncertain else '원문과 선수 개념을 다시 읽고 재진단하세요.')}
 
-def evaluate(quiz_id, session_id, answer, assessment=None):
+def evaluate(quiz_id, session_id, answer, assessment=None,*,require_verified=False):
     with db() as c:
         c.execute('BEGIN IMMEDIATE')
         q=c.execute('SELECT * FROM quizzes WHERE id=? AND session_id=?',(quiz_id,session_id)).fetchone()
         if not q:raise ValueError('이 세션의 퀴즈가 아닙니다.')
         old=c.execute('SELECT * FROM attempts WHERE quiz_id=?',(quiz_id,)).fetchone()
         if old:
-            return {**json.loads(old['feedback']),'attempt_id':old['id'],'concept_id':q['concept_id'],
+            previous={**json.loads(old['feedback']),'attempt_id':old['id'],'concept_id':q['concept_id'],
                     'already_submitted':True,'requested_answer_was_ignored':normalize(answer)!=normalize(old['answer'])}
+            if require_verified and not grade(json.loads(q['payload']),old['answer'],True).get('key_verified'):
+                previous.update(uncertain=True,key_verified=False,historical_assessment=True,
+                    next_action='이전 판정은 현재 정답 검증 기준을 충족하지 않습니다. 원래 기록은 보존하고 원문과 수동 확인하세요.')
+            return previous
         payload=json.loads(q['payload'])
-        result=grade(payload,answer)
-        if assessment and payload['kind']=='short' and result['uncertain']:
+        result=grade(payload,answer,require_verified)
+        if assessment and payload['kind']=='short' and result['uncertain'] and not require_verified:
             confidence=assessment.get('confidence',0)
             if assessment.get('correct') is not None and confidence>=.85:
                 result['correct']=assessment['correct']
@@ -75,21 +98,27 @@ def evaluate(quiz_id, session_id, answer, assessment=None):
             result['grading']='AI 의미 평가 (오판 가능)' if not result['uncertain'] else 'AI 의미 평가 불확실'
         # Never replace a deterministic answer key with a contradictory model
         # explanation; a model can be wrong even when it claims high confidence.
-        agrees=assessment and assessment.get('correct')==result['correct']
+        agrees=assessment and assessment.get('correct')==result['correct'] and (not require_verified or not result['uncertain'])
         if agrees and assessment.get('explanation'):
             result['explanation']=assessment['explanation']
             if not result['correct']:result['cause']=assessment.get('cause') or result['cause']
         if not result['uncertain']:
             result['next_action']='다음 개념으로 진행' if result['correct'] else '부족한 개념을 복습하고 다시 진단하세요.'
+        if require_verified and assessment and result['uncertain']:
+            result['model_advice']={k:assessment.get(k) for k in ('correct','confidence','explanation')}
         aid=uuid.uuid4().hex
         c.execute('INSERT INTO attempts(id,quiz_id,answer,correct,uncertain,feedback) VALUES(?,?,?,?,?,?)',
                   (aid,quiz_id,answer,int(result['correct']),int(result['uncertain']),json.dumps(result,ensure_ascii=False)))
-        c.execute("UPDATE sessions SET state='ready' WHERE id=?", (session_id,))
-        _update_mastery(c,q['concept_id'])
+        c.execute('UPDATE sessions SET state=? WHERE id=?', ('awaiting_review' if require_verified and result['uncertain'] else 'ready',session_id))
+        if not result['uncertain']:_update_mastery(c,q['concept_id'])
     return {**result,'attempt_id':aid,'concept_id':q['concept_id']}
 
 def _update_mastery(c,concept_id):
-    all_rows = c.execute('SELECT a.*,q.payload FROM attempts a JOIN quizzes q ON q.id=a.quiz_id WHERE q.concept_id=? AND a.uncertain=0 ORDER BY a.created,a.rowid', (concept_id,)).fetchall()
+    all_rows = c.execute('''SELECT a.id,a.created,q.payload,
+       COALESCE((SELECT correct FROM attempt_reviews v WHERE v.attempt_id=a.id ORDER BY v.rowid DESC LIMIT 1),a.correct) correct
+       FROM attempts a JOIN quizzes q ON q.id=a.quiz_id WHERE q.concept_id=?
+       AND (a.uncertain=0 OR EXISTS(SELECT 1 FROM attempt_reviews v WHERE v.attempt_id=a.id))
+       ORDER BY a.created,a.rowid''', (concept_id,)).fetchall()
     # Repeated versions of the same question are one piece of evidence.
     unique = {}
     for row in all_rows:
@@ -103,6 +132,8 @@ def _update_mastery(c,concept_id):
         if not r['correct']: break
         streak += 1
     status = '이해 완료' if streak>=3 and correct/max(len(rows),1)>=.8 else ('복습 필요' if rows and not rows[-1]['correct'] else '학습 중')
+    name=c.execute('SELECT name FROM concepts WHERE id=?',(concept_id,)).fetchone()
+    if name and name['name'].startswith(('계산 연습 · ','원문 용어 회상 · ')) and status=='이해 완료':status='연습 완료'
     c.execute('INSERT INTO mastery(concept_id,correct,total,streak,status) VALUES(?,?,?,?,?) ON CONFLICT(concept_id) DO UPDATE SET correct=excluded.correct,total=excluded.total,streak=excluded.streak,status=excluded.status,updated=CURRENT_TIMESTAMP', (concept_id,correct,len(rows),streak,status))
     return dict(c.execute('SELECT * FROM mastery WHERE concept_id=?',(concept_id,)).fetchone())
 
@@ -110,6 +141,18 @@ def update_mastery(concept_id):
     with db() as c:
         c.execute('BEGIN IMMEDIATE')
         return _update_mastery(c,concept_id)
+
+
+def review_attempt(attempt_id,correct,confirmed_key,note):
+    with db() as c:
+        attempt=c.execute('SELECT q.concept_id,q.session_id FROM attempts a JOIN quizzes q ON q.id=a.quiz_id WHERE a.id=?',(attempt_id,)).fetchone()
+        if not attempt:raise ValueError('답안 기록이 없습니다.')
+        rid=uuid.uuid4().hex
+        c.execute('INSERT INTO attempt_reviews(id,attempt_id,correct,confirmed_key,note) VALUES(?,?,?,?,?)',
+                  (rid,attempt_id,int(correct),confirmed_key,note))
+        state=_update_mastery(c,attempt['concept_id'])
+        c.execute("UPDATE sessions SET state='ready' WHERE id=? AND state='awaiting_review'",(attempt['session_id'],))
+    return {'id':rid,'type':'user_self_review','correct':correct,'mastery':state}
 
 def history(book_id):
     return many('SELECT c.name,c.book_id,m.* FROM mastery m JOIN concepts c ON c.id=m.concept_id WHERE c.book_id=? ORDER BY m.updated DESC', (book_id,))

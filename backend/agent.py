@@ -12,6 +12,7 @@ from .database import db, one, many, data_path
 from .config import settings
 from .providers import OpenAIProvider
 from .ollama_provider import OllamaProvider
+from .math_verification import MathInput
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra='forbid')
@@ -28,6 +29,8 @@ class ChatRequest(StrictModel):
     strategy: Literal['agent','baseline'] = 'agent'
     quiz_id: str | None = None
     answer: str | None = Field(default=None,max_length=2000)
+    learning_mode: Literal['basic','deep']='basic'
+    math_input: MathInput | None=None
 
 class SearchArgs(StrictModel):
     query: str = Field(min_length=1,max_length=1000)
@@ -81,9 +84,10 @@ def tool_schemas(baseline=False):
     return [{'type':'function','name':n,'description':DESCRIPTIONS[n],'parameters':MODELS[n].model_json_schema(),'strict':False} for n in names]
 
 class Agent:
-    def __init__(self, request: ChatRequest, provider=None):
+    def __init__(self, request: ChatRequest, provider=None,progress=None):
         self.req = request
         self.provider = provider
+        self.progress=progress
         self.sources = {}
         self.quiz = None
         self.evaluation = None
@@ -112,7 +116,9 @@ class Agent:
         for r in rows: self.sources[r['id']] = r
         return rows
 
-    def execute(self, name, args):
+    def execute(self, name, args, *, actor=None):
+        self.phase('searching' if name in ('get_current_page','search_textbook','search_across_books','find_prerequisites') else 'verifying')
+        started=time.perf_counter()
         if len(self.events)>=self.limit: raise ValueError('Agent 최대 도구 실행 횟수에 도달했습니다.')
         if name not in MODELS or (self.req.strategy=='baseline' and name not in {t['name'] for t in tool_schemas(True)}):
             raise ValueError('허용되지 않은 도구입니다.')
@@ -130,12 +136,18 @@ class Agent:
         if name=='generate_quiz':
             for field in ('answer','accepted','explanation'):
                 if field in log_args:log_args[field]='[답안 제출 전 비공개]'
-        event = {'tool':name,'input':log_args,'output':result,'status':status}
+        event = {'tool':name,'input':log_args,'output':result,'status':status,
+                 'actor':actor or ('mock' if settings.ai_mode=='mock' and not self.provider else 'model'),
+                 'elapsed_ms':round((time.perf_counter()-started)*1000,2)}
         self.events.append(event)
         with db() as c:
             c.execute('INSERT INTO events(run_id,tool,input,output,status) VALUES(?,?,?,?,?)',
                 (self.run_id,name,json.dumps(log_args,ensure_ascii=False),json.dumps(result,ensure_ascii=False),status))
         return result
+
+    def phase(self,name):
+        callback=getattr(self,'progress',None)
+        if callback:callback(name)
 
     def dispatch(self,n,a):
         r = self.req
@@ -187,19 +199,42 @@ class Agent:
                 self.quiz=learning.public_quiz(pending['id'])
                 return self.quiz
             self.check_sources(a['source_ids'])
+            if getattr(self,'local_quality',False):
+                from .quality import assess
+                if any(c['status']=='fail' for c in assess(a['question']+'\n'+a['answer']+'\n'+a['explanation'],'',self.sources)['math_checks']):
+                    raise ValueError('생성된 문제 해설의 수학 검증에 실패했습니다. 문제를 저장하지 않았습니다.')
+                if re.search(r'(?:정답|해설)\s*[:：]',a['question']):
+                    raise ValueError('문제 본문에 정답·해설 표시가 포함되어 저장하지 않았습니다.')
             if a['kind']=='choice' and (len(a['choices'])<2 or a['answer'] not in a['choices']):
                 raise ValueError('객관식 정답은 선택지 중 하나여야 합니다.')
             if a['kind']=='numeric' and not math.isfinite(float(a['answer'])):raise ValueError('유한한 숫자 정답이 필요합니다.')
+            if getattr(self,'strict_explanation',False):
+                from .quiz_validation import source_key
+                a['_verification']=source_key(a,[self.sources[cid] for cid in a['source_ids']])
+                if a['_verification']['status']=='verified_source_recall':a['concept']='원문 용어 회상 · '+a['concept'][:120]
+                if getattr(self,'issuing_calculation_quiz',False):
+                    from .quiz_validation import numeric_quiz
+                    verified=numeric_quiz(self.math_review,a['source_ids'],self.req.message[:80])
+                    if a['answer']!=verified['answer'] or a['question']!=verified['question']:raise ValueError('독립 계산 문제 기준이 일치하지 않습니다.')
+                    a['_verification']=verified['_verification']
+                a['accepted']=[]  # A model cannot invent trusted synonyms.
             self.quiz = learning.save_quiz(self.session_id,r.book_id,a)
             return self.quiz
         if n=='evaluate_answer':
             if not r.quiz_id or r.answer is None: raise ValueError('사용자의 퀴즈 답변이 필요합니다.')
-            self.evaluation = learning.evaluate(r.quiz_id,self.session_id,r.answer,a if settings.ai_mode=='live' or self.provider else None)
+            if getattr(self,'local_quality',False) and a.get('explanation'):
+                from .quality import assess
+                if any(c['status']=='fail' for c in assess(a['explanation'],'',self.sources)['math_checks']):
+                    raise ValueError('채점 해설의 수식 오류가 감지되어 답안과 이해도를 변경하지 않았습니다.')
+            self.evaluation = learning.evaluate(r.quiz_id,self.session_id,r.answer,a if settings.ai_mode=='live' or self.provider else None,require_verified=getattr(self,'strict_explanation',False))
             return self.evaluation
         if n=='update_mastery':
             if not self.evaluation: raise ValueError('먼저 실제 답안을 평가해야 합니다.')
             return learning.update_mastery(self.evaluation['concept_id'])
-        if n=='recommend_next_topic': return learning.recommend(r.book_id)
+        if n=='recommend_next_topic':
+            if self.evaluation and self.evaluation.get('uncertain'):
+                return {'action':'needs_review','topics':[], 'message':self.evaluation['next_action']}
+            return learning.recommend(r.book_id)
 
     def check_sources(self, ids):
         if not ids:raise ValueError('실제 검색 또는 현재 페이지의 출처가 필요합니다.')
@@ -221,10 +256,13 @@ class Agent:
                 if self.req.page>len(document):return None
                 page=document[self.req.page-1]
                 # Preserve even one-character indices and short denominators.
-                text='\n'.join(block[4].strip() for block in page.get_text('blocks',sort=True) if block[4].strip())
+                from .pdf_math import readable_page
+                text,hints=readable_page(page)
                 if not text:return None
                 return {'book_id':book['id'],'title':book['title'],'page':self.req.page,
+                        'raw_text':page.get_text(),
                         'printed_page':page.get_label() or None,'text':text[:18000],
+                        'layout_fractions':hints,
                         'truncated':len(text)>18000,'source_ids':[row['id'] for row in context],
                         'warning':'PDF 전체 페이지의 추출 텍스트입니다. 짧은 수식 기호도 포함하지만 분수·첨자·배치는 보존되지 않을 수 있으므로 원본과 대조하세요.'}
         except (OSError,ValueError,RuntimeError):
@@ -300,6 +338,9 @@ class Agent:
 
     def live(self):
         provider = self.provider or (OllamaProvider() if settings.ai_provider=='ollama' else OpenAIProvider())
+        if getattr(provider,'compact_workflow',False):
+            from .local_flow import run
+            return run(self,provider)
         previous = many('SELECT request,response FROM runs WHERE session_id=? AND id!=? AND status IN (\'completed\',\'awaiting_answer\') ORDER BY rowid DESC LIMIT 4',(self.session_id,self.run_id))
         messages = []
         for p in reversed(previous):
@@ -381,13 +422,55 @@ class Agent:
                 self.text+='\n\n⚠️ PDF에서 추출한 수식에는 기호나 위치가 빠질 수 있습니다. PDF 원본과 대조하세요.'
             if self.evaluation and self.evaluation.get('requested_answer_was_ignored'):
                 self.text+='\n\n이 문제는 이미 제출되어 이전 채점 결과를 보여줍니다. 새 답안은 저장하지 않았습니다.'
+            if getattr(self,'local_quality',False):
+                from .quality import assess
+                self.quality=assess(self.text,'' if getattr(self,'strict_explanation',False) else self.req.message,self.sources)
+                if getattr(self,'strict_explanation',False):
+                    if not getattr(self,'server_explanation',False):
+                        self.quality['prose_status']='unverified_model_explanation'
+                        self.quality['issues'].append('AI 개념 설명의 의미 정확성은 미검증입니다. 원문 대조 전 확정된 학습 지식으로 처리하지 않습니다.')
+                    self.quality['limits']='Python 검산 범위와 AI 개념 설명은 별개입니다. AI 문장의 의미·원문 해석·유도 정확성은 자동 인증하지 않았습니다.'
+                    self.phase('verifying')
+                    # The LLM's prose is not a math proof. Any newly generated
+                    # formula or numeric equality is held as an untrusted draft.
+                    risky=bool(re.search(r'[=∫∑]|\\(?:frac|int|sum)|[pP]\(',self.text))
+                    if risky and not self.evaluation and not getattr(self,'server_explanation',False):
+                        self.draft=self.text
+                        self.text='AI 초안에 검증되지 않은 수식이 포함되어 설명 확정을 보류했습니다. 아래 원문과 수식 확인 결과를 대조하세요.'
+                        self.quality['issues'].append('모델이 생성한 수식은 원문·독립 계산의 검증 결과로 대체하지 않았습니다.')
+                    if getattr(self,'math_review',{}).get('status') in ('failed','unverified'):
+                        self.quality['issues'].append('입력 수식·계산이 확인되지 않았습니다. 수식 유도는 확정하지 않습니다.')
+                    if re.search(r'유도|deriv',self.req.message,re.I) and getattr(self,'math_review',{}).get('status')!='verified_identity':
+                        self.quality['issues'].append('요청한 유도는 검증하지 못했습니다. 확인된 계산과 개념 설명만 제공합니다.')
+                from .quality import unsupported_book_mentions
+                mentions=unsupported_book_mentions(self.text,getattr(self,'unmatched_books',[]))
+                if mentions:
+                    self.quality['issues'].append('이번 검색에서 근거를 찾지 못한 교과서를 답변이 언급했습니다. 내용 주장인지 부재 설명인지 원문과 확인하세요: '+'; '.join(mentions))
+                    self.quality['status']='needs_review'
+                    if getattr(self,'strict_explanation',False):
+                        self.draft=self.text
+                        self.text='검색 근거가 없는 교과서를 AI 초안이 언급하여 설명 확정을 보류했습니다. 실제 검색 출처만 확인하세요.'
+                if self.quality['issues']:
+                    status='needs_review';self.quality['status']='needs_review'
+                if self.evaluation and self.evaluation.get('uncertain'):
+                    status='needs_review';self.quality['status']='needs_review'
+                    self.quality['issues'].append('의미 채점이 불확실하여 이해도를 낮추지 않았습니다.')
+                cited=[self.sources[cid] for cid in sorted(getattr(self,'cited_ids',())) if cid in self.sources]
+                if cited:
+                    # Citation destinations come from validated server metadata.
+                    self.text+='\n\n**원문 출처** · '+' · '.join(f"[{s['title']} · PDF {s['page']}p](#source-{s['id']})" for s in cited[:3])
             if self.quiz: status = 'awaiting_answer'
         except Exception as exc:
             status = 'error'
             self.text = str(exc) if isinstance(exc,ValueError) else 'AI 요청에 실패했습니다. 네트워크·API 설정을 확인하세요. 자동 재시도로 비용을 발생시키지 않습니다.'
-        result = {'id':self.run_id,'session_id':self.session_id,'text':self.text,'sources':list(self.sources.values()),
+        final_sources=[s for cid,s in self.sources.items() if not hasattr(self,'cited_ids') or cid in self.cited_ids]
+        result = {'id':self.run_id,'session_id':self.session_id,'text':self.text,'sources':final_sources,
                   'quiz':self.quiz,'evaluation':self.evaluation,'events':self.events,'status':status,
                   'mode':settings.ai_mode,'provider':settings.ai_provider,'usage':self.usage,'elapsed':round(time.monotonic()-start,3)}
+        if hasattr(self,'quality'):result['quality']=self.quality
+        for field in ('math_review','draft'):
+            if hasattr(self,field):result[field]=getattr(self,field)
+        if getattr(self,'strict_explanation',False):result['explanation_origin']='server_verification' if getattr(self,'server_explanation',False) else 'local_model_unverified'
         with db() as c:
             c.execute('UPDATE runs SET response=?,status=?,usage=?,elapsed=? WHERE id=?',
                       (json.dumps(result,ensure_ascii=False),status,json.dumps(self.usage),result['elapsed'],self.run_id))

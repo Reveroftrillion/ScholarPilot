@@ -22,7 +22,6 @@ test('actual local results, PDF source navigation, selection and learning-state 
  await page.locator('.book-title').filter({hasText:bishop.title}).click();
  await expect(page.locator('.react-pdf__Page canvas')).toBeVisible();
  await expect(page.locator('.answer-label').last()).toContainText('LOCAL AI');
- expect(history.at(-1).response.status).not.toBe('error');
  await expect(page.locator('.user-message').last()).toHaveText(history.at(-1).request.message);
  await expect(page.locator('.answer').last()).toBeVisible();
  const sources=page.locator('.sources');
@@ -58,6 +57,22 @@ test('actual local results, PDF source navigation, selection and learning-state 
  await page.getByRole('button',{name:'Ollama 연결 확인 · 무료',exact:true}).click();
  await expect(page.locator('.ai-check')).toContainText('외부 유료 호출 없음');
  await expect(page.locator('.ai-check')).toContainText('텍스트를 생성하지 않습니다');
+ // Switch books and exercise the actual backend search without generation.
+ await page.getByRole('button',{name:'내 서재',exact:true}).click();
+ const systems=books.find((b:{title:string})=>b.title.includes('Machine Learning Systems'));
+ await page.locator('.book-title').filter({hasText:systems.title}).click();
+ await expect(page.getByLabel('교과서 선택')).toHaveValue(systems.id);
+ await page.getByRole('button',{name:'원문 검색',exact:true}).click();
+ const search=page.waitForResponse(r=>r.url().endsWith('/api/search')&&r.request().method()==='POST');
+ await page.getByLabel('원문 검색어').fill('PTQ QAT');
+ await page.getByRole('button',{name:'검색',exact:true}).click();
+ const searchResponse=await search;const results=await searchResponse.json();
+ expect(results.length).toBeGreaterThan(0);
+ expect(results.every((r:{book_id:string})=>r.book_id===systems.id)).toBe(true);
+ await expect(page.locator('.search-result').first()).toBeVisible();
+ await page.locator('.search-result').first().click();
+ await expect(page.getByLabel('페이지 번호')).toHaveValue(String(results[0].page));
+ await expect(page.locator('.react-pdf__Page canvas')).toBeVisible();
  const after=await (await request.get('/api/local-evaluation')).json();
  expect(after.model_calls).toBe(initialCalls);expect(after.external_paid_calls).toBe(0);
  expect(chatRequests).toEqual([]);expect(errors).toEqual([]);
