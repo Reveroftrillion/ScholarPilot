@@ -1,5 +1,9 @@
 # 로컬 AI 설치·검증 안내
 
+## 현재 데스크톱 설정 (2026-11-20)
+
+현재 PC는 Ryzen 5 7500F, RAM 16GB, RTX 5070 12GB입니다. 공식 Ollama 0.40.16의 CUDA 13 런타임을 포함해 설치하며, 기본 모델은 `qwen3:8b`, 문맥은 4096입니다. 기존 `qwen3:1.7b`는 보존합니다. 실제 GPU·VRAM·속도와 번역/설명의 오류는 [GPU 모델 비교](GPU_MODEL_COMPARISON.md)를 참고하세요. 아래 노트북 사양과 1.7B CPU 측정은 이전 환경의 기록이며 현재 데스크톱에 적용하지 않습니다.
+
 ## 최신 동작과 검증 범위
 
 실제 Ollama는 기본 설명/명시적 심화 학습을 구분하는 `reliable_flow`를 사용합니다. 기본은 1회 생성이며 수식은 PDF 영역 확인·사용자 입력·제한된 Python 검산으로 분리합니다. 검증된 계산 문제 채점은 모델 0회이고 미검증 정답으로 이해도를 확정하지 않습니다. 수동 확인은 별도 감사 기록입니다. AI 설명은 의미 미검증이며 현재 베이즈·PTQ/QAT 설명 품질은 실패했습니다.
@@ -8,9 +12,9 @@
 
 2026-11-19 기준입니다. 실제 AI 생성은 이 PC의 Ollama에서 수행합니다. `Mock`, 오프라인 모델 대역, 실제 로컬 모델은 구분하여 기록합니다. 외부 유료 AI 요청은 금지하며 OpenAI 크레딧은 필요하지 않습니다. 이번 실측 결과와 실패 항목은 [로컬 검증 보고서](LOCAL_VALIDATION.md)에 있습니다.
 
-## 설치와 모델 선택
+## 이전 노트북의 설치와 모델 선택
 
-현재 CPU는 i5-1240P, RAM은 약 8 GB, GPU는 Intel Iris Xe 내장형입니다. Qwen3 4B(가중치 약 2.5 GB)와 8B(약 5.2 GB)를 우선 검토했으나 초기 가용 RAM이 약 0.87 GiB로 작았습니다. 런타임·KV 캐시·브라우저까지 고려해 `qwen3:1.7b`를 선택했습니다. 태그 이름과 실제 파라미터 수는 다릅니다. Ollama 메타데이터상 약 2.03B, Q4_K_M이며 다운로드 가중치는 약 1.359 GB입니다.
+이전 노트북 CPU는 i5-1240P, RAM은 약 8 GB, GPU는 Intel Iris Xe 내장형이었습니다. Qwen3 4B(가중치 약 2.5 GB)와 8B(약 5.2 GB)를 우선 검토했으나 초기 가용 RAM이 약 0.87 GiB로 작았습니다. 런타임·KV 캐시·브라우저까지 고려해 `qwen3:1.7b`를 선택했습니다. 태그 이름과 실제 파라미터 수는 다릅니다. Ollama 메타데이터상 약 2.03B, Q4_K_M이며 다운로드 가중치는 약 1.359 GB입니다.
 
 모델 태그와 크기는 [Ollama Qwen3 공식 라이브러리](https://ollama.com/library/qwen3/tags), 로컬 도구 호출 형식은 [Ollama 공식 tool calling 문서](https://docs.ollama.com/capabilities/tool-calling)를 기준으로 합니다. 이 모델 크기는 대학원 수학 설명 품질을 보증하지 않습니다.
 
@@ -38,8 +42,8 @@ Windows 포터블 패키지는 [공식 Ollama v0.40.16 배포](https://github.co
 AI_MODE=live
 AI_PROVIDER=ollama
 OLLAMA_BASE_URL=http://127.0.0.1:11434
-OLLAMA_MODEL=qwen3:1.7b
-OLLAMA_NUM_CTX=8192
+OLLAMA_MODEL=qwen3:8b
+OLLAMA_NUM_CTX=4096
 OLLAMA_NUM_PREDICT=1000
 OLLAMA_TIMEOUT=600
 ALLOW_EXTERNAL_AI=false

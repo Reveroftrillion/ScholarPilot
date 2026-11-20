@@ -1,6 +1,6 @@
 # ScholarPilot 사용 순서
 
-1. `scripts/start.ps1`을 실행하고 브라우저에서 `http://127.0.0.1:8000`을 엽니다. 기본 AI는 로컬 Ollama의 `qwen3:1.7b`이며 OpenAI API 키는 필요하지 않습니다.
+1. `scripts/start.ps1`을 실행하고 브라우저에서 `http://127.0.0.1:8000`을 엽니다. 기본 AI는 로컬 Ollama의 `qwen3:8b`이며 OpenAI API 키는 필요하지 않습니다. 현재 데스크톱에서는 문맥 4096으로 RTX 5070 GPU를 사용합니다.
 2. 서재에서 Bishop PDF를 엽니다. 책이 없다면 PDF를 추가하거나 `scripts/import_books.py Books`로 등록합니다.
 3. PDF 문장을 드래그하고 **한국어 번역**을 누릅니다. 같은 선택 문장으로 **쉽게 설명**을 요청합니다.
 4. 채팅에 추가 질문을 입력합니다. 진행 상태와 오류가 나타나며 요청이 끝나기 전에 중복 전송하지 않습니다.

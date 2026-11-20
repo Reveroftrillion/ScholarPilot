@@ -1,6 +1,8 @@
 # ScholarPilot
 
-PDF 교과서를 읽으면서 선택한 문장의 한국어 번역과 쉬운 설명을 요청하고 이어서 질문하는 로컬 프로그램입니다. AI 응답은 이 PC의 Ollama `qwen3:1.7b` 모델을 사용합니다. OpenAI API 키는 필요하지 않습니다.
+PDF 교과서를 읽으면서 선택한 문장의 한국어 번역과 쉬운 설명을 요청하고 이어서 질문하는 로컬 프로그램입니다. AI 응답은 이 PC의 Ollama `qwen3:8b` 모델을 사용합니다. OpenAI API 키는 필요하지 않습니다.
+
+현재 데스크톱(Ryzen 5 7500F, RAM 16GB, RTX 5070 12GB)에서는 문맥 4096으로 GPU 실행을 확인했습니다. 기존 `qwen3:1.7b`도 유지합니다. GPU가 없는 PC에서는 `.env`의 `OLLAMA_MODEL=qwen3:1.7b`로 되돌릴 수 있으며, 설치할 때는 `scripts/setup-ollama.ps1 -Model qwen3:1.7b`를 사용합니다. 실제 속도·메모리·오류는 [GPU 모델 비교](docs/GPU_MODEL_COMPARISON.md)를 참고하세요.
 
 ## Windows에서 실행
 

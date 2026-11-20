@@ -13,9 +13,9 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(default='',repr=False,exclude=True)
     openai_model: str = 'gpt-6-luna'
     ollama_base_url: str = 'http://127.0.0.1:11434'
-    ollama_model: str = 'qwen3:1.7b'
+    ollama_model: str = 'qwen3:8b'
     ollama_tool_format: Literal['native','json'] = 'json'
-    ollama_num_ctx: int = Field(default=8192,ge=2048,le=32768)
+    ollama_num_ctx: int = Field(default=4096,ge=2048,le=32768)
     ollama_num_predict: int = Field(default=1000,ge=128,le=4096)
     ollama_num_batch: int = Field(default=128,ge=32,le=512)
     ollama_timeout: int = Field(default=600,ge=10,le=900)
