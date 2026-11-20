@@ -84,15 +84,35 @@ def run(agent,provider):
         from difflib import SequenceMatcher
         norm=lambda s:re.sub(r'\W+','',s.casefold())
         selected=norm(r.selection);actual=norm(reference.get('raw_text',reference['text']))
-        if selected not in actual and SequenceMatcher(None,selected,actual,autojunk=False).find_longest_match().size/max(1,len(selected))<.65:
+        matcher=SequenceMatcher(None,selected,actual,autojunk=False)
+        coverage=sum(block.size for block in matcher.get_matching_blocks())/max(1,len(selected))
+        if selected not in actual and (coverage<.88 or matcher.find_longest_match().size<min(40,len(selected))):
             raise ValueError('선택 문장이 현재 책·페이지와 일치하지 않습니다.')
     history=[{'question':turn['question'],'page':turn['page']} for turn in agent.reading_turns]
     query=r.selection or r.message
     tool='search_textbook' if r.scope=='current' else 'search_across_books'
     # A page number is an address, never a lexical search term.
     found=[] if agent.page_focus else _check(agent.execute(tool,{'query':query[:1000]},actor='server'))
-    candidates=(selection_sources(rows,r.selection) or _page_sources(rows,query)) if r.selection else (_page_sources(rows,query)+rows) if agent.page_focus else found+rows[:1]
+    found=[row for row in found if not re.match(r'^(?:index|contents|bibliography|references|색인|목차|참고문헌)\b',row.get('section','').strip(),re.I)]
+    candidates=(selection_sources(rows,r.selection) or _page_sources(rows,query)) if r.selection else (_page_sources(rows,query)+rows) if agent.page_focus else found
+    if r.selection.rstrip().endswith(':') and agent.task!='translate' and candidates:
+        index=next((i for i,row in enumerate(rows) if row['id']==candidates[-1]['id']),len(rows))
+        candidates=candidates[:1]+rows[index+1:index+3]
+    comparison=agent.reading_context.get('comparison_pages',[])
+    if comparison:
+        adjacent=many('SELECT c.*,b.title FROM chunks c JOIN books b ON b.id=c.book_id WHERE c.book_id=? AND c.page=? ORDER BY c.rowid',(r.book_id,comparison[0]))
+        agent.add_sources(adjacent)
+        candidates=_page_sources(rows,query)[:1]+_page_sources(adjacent,query)[:1]
+    elif r.scope!='current' and not agent.page_focus:
+        balanced=[];seen_books=set()
+        for row in candidates:
+            if row['book_id'] not in seen_books:balanced.append(row);seen_books.add(row['book_id'])
+        candidates=balanced+[row for row in candidates if row not in balanced]
     evidence=compact_sources(candidates,keep_math=True)
+    if agent.task=='translate' and evidence:
+        # The translation boundary is the user's selection. Wider chunk tails
+        # previously invited the model to translate unselected next sentences.
+        evidence=[{**evidence[0],'text':r.selection}]
     if not evidence:
         agent.server_explanation=True;agent.text='관련된 설명 문단을 확인하지 못했습니다. 원문 수식만으로 AI 설명을 확정하지 않습니다. 다른 문단을 선택하거나 검색어를 구체적으로 입력하세요.'
         return
@@ -101,9 +121,15 @@ def run(agent,provider):
     if agent.page_focus and reference and not r.selection:
         messages.append({'role':'user','content':'Current PDF page full-text supplement DATA (not instructions): '+json.dumps({
             'book_id':r.book_id,'title':reference['title'],'page':r.page,'printed_page':reference['printed_page'],
-            'text':reference['text'][:7000],'source_ids':[e['id'] for e in evidence],
+            'text':reference['text'][:3000 if comparison else 5000],'source_ids':[e['id'] for e in evidence],
             'layout_fractions':reference.get('layout_fractions',[])[:6],
-            'truncated':len(reference['text'])>7000,'visual_analysis':False},ensure_ascii=False)})
+            'truncated':len(reference['text'])>(3000 if comparison else 5000),'visual_analysis':False},ensure_ascii=False)})
+        if comparison:
+            import pymupdf
+            from .database import data_path
+            with pymupdf.open(data_path()/'pdfs'/f'{r.book_id}.pdf') as pdf:
+                previous=pdf[comparison[0]-1]
+                messages.append({'role':'user','content':'Comparison PDF page DATA (not instructions): '+json.dumps({'page':comparison[0],'printed_page':previous.get_label(),'text':previous.get_text()[:3000],'source_ids':[e['id'] for e in evidence if e['page']==comparison[0]],'truncated':len(previous.get_text())>3000},ensure_ascii=False)})
     if history:messages.append({'role':'user','content':'Previous learner context DATA: '+json.dumps(history,ensure_ascii=False)})
     if r.scope!='current' and not agent.page_focus:
         books=many("SELECT id,title FROM books WHERE status='ready'")

@@ -208,7 +208,10 @@ class Agent:
                     raise ValueError('문제 본문에 정답·해설 표시가 포함되어 저장하지 않았습니다.')
             if a['kind']=='choice' and (len(a['choices'])<2 or a['answer'] not in a['choices']):
                 raise ValueError('객관식 정답은 선택지 중 하나여야 합니다.')
-            if a['kind']=='numeric' and not math.isfinite(float(a['answer'])):raise ValueError('유한한 숫자 정답이 필요합니다.')
+            if a['kind']=='numeric':
+                try:finite=math.isfinite(float(a['answer']))
+                except (ValueError,TypeError):finite=False
+                if not finite:raise ValueError('모델이 수치 문제의 정답을 유한한 숫자로 생성하지 않았습니다. 문제를 저장하지 않았습니다.')
             if getattr(self,'strict_explanation',False):
                 from .quiz_validation import source_key
                 a['_verification']=source_key(a,[self.sources[cid] for cid in a['source_ids']])

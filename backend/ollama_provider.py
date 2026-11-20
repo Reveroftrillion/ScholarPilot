@@ -328,6 +328,11 @@ class OllamaProvider:
                 kind='choice' if re.search(r'객관식|multiple.choice',message,re.I) else 'numeric' if re.search(r'계산 문제|계산문제|numeric',message,re.I) else 'short'
                 properties=tool['parameters']['properties']
                 properties['kind']={'type':'string','const':kind}
+                if kind=='choice':
+                    properties['choices'].update(minItems=2,uniqueItems=True,description='2~6개의 완전한 선택지. answer는 이 중 하나의 문자열과 정확히 같아야 합니다.')
+                    tool['parameters'].setdefault('required',[]).append('choices')
+                elif kind=='numeric':
+                    properties['answer'].update(pattern=r'^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$',description='유한한 십진수 정답만 작성. 계산 가능한 근거가 없으면 숫자를 지어내지 마세요.')
                 for optional in ('accepted','tolerance'):
                     properties.pop(optional,None)
                 if kind!='choice':properties.pop('choices',None)
@@ -363,7 +368,7 @@ class OllamaProvider:
                 if task=='detail' and wants_example(req):
                     tool['parameters']['properties']['example']={
                         'type':'string','minLength':20,'maxLength':1800,'pattern':'[0-9]',
-                        'description':'모델이 만든 작은 수치 예시. 손실 예시는 예측값 f(x)와 실제값 t의 개별 손실을 계산. 기대값이면 완전한 유한 확률분포 제시. 한 관측쌍을 전체 기대손실·최적성 근거로 취급하지 않음. 수식은 $...$로 표시.'}
+                        'description':'현재 원문 주제에 직접 관련된 작은 예시. 원문 사실과 예시를 위해 정한 가정을 구분. 관련 없는 손실 함수나 성능 수치를 추가하지 않음. 기댓값 계산이면 대응하는 값과 확률을 모두 명시. 수식은 $...$로 표시.'}
                     tool['parameters'].setdefault('required',[]).append('example')
         if tools:
             step='Next learning step: call '+', '.join(t['name'] for t in tools)+'. Use evidence from the supplied DATA.'

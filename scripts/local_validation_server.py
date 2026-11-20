@@ -1,6 +1,7 @@
 """Actual local Ollama QA on isolated copies of registered books; no paid provider."""
 import argparse
 import json
+import re
 import sys
 import threading
 import time
@@ -22,7 +23,22 @@ def main():
     else:
         _,target=prepare_isolated(include_all=True,category='local-evaluation-runs')
         (target/'.local-evaluation').write_text('actual local model; no user history copied\n',encoding='utf-8')
-    delegate=OllamaProvider();ledger=target/'local-model-calls.json'
+    class CaptureHTTP:
+        final=None
+        def post(self,url,*,json):
+            with httpx.Client(timeout=settings.ollama_timeout,trust_env=False,follow_redirects=False) as client:
+                response=client.post(url,json=json)
+            try:
+                body=response.json();message=body.get('message',{})
+                # Store final wire content for rejected JSON too, never thinking.
+                content=message.get('content','')
+                if '<think>' in content:
+                    content=re.sub(r'<think>.*?</think>','',content,flags=re.S) if '</think>' in content else ''
+                self.final={'content':content,'tool_calls':message.get('tool_calls',[]),'done_reason':body.get('done_reason')}
+            except (ValueError,AttributeError,TypeError):self.final={'http_status':response.status_code}
+            return response
+    transport=CaptureHTTP()
+    delegate=OllamaProvider(client=transport);ledger=target/'local-model-calls.json'
     records=json.loads(ledger.read_text(encoding='utf-8')) if ledger.exists() else []
     lock=threading.Lock()
     def save():
@@ -46,6 +62,7 @@ def main():
         def respond(self,messages,tools):
             with lock:
                 start=time.monotonic();before=len(delegate.metrics)
+                transport.final=None
                 record={'model':settings.ollama_model,'status':'started','input':safe_copy(messages),'memory_before':memory()};records.append(record);save()
                 try:
                     response=delegate.respond(messages,tools)
@@ -56,6 +73,7 @@ def main():
                     raise
                 finally:
                     record['elapsed']=round(time.monotonic()-start,3)
+                    if transport.final is not None:record['final_wire_response']=transport.final
                     if len(delegate.metrics)>before:record['metrics']=delegate.metrics[-1]
                     record['memory_after']=memory()
                     try:

@@ -120,8 +120,11 @@ def assess(text,question,source_ids):
                     valid=round(actual,len(right.strip().split('.')[1]))==claimed
                 checks.append({'expression':left+' = '+right,'status':'pass' if valid else 'fail','computed':actual,'claimed':claimed})
                 if not valid:issues.append('숫자 예제의 등식이 독립 계산 결과와 다릅니다.')
-            except (ValueError,ArithmeticError,SyntaxError):
+            except ArithmeticError:
                 checks.append({'expression':left+' = '+right,'status':'fail'});issues.append('숫자 예제에 계산할 수 없는 식이 있습니다.')
+            except (ValueError,SyntaxError):
+                checks.append({'expression':left+' = '+right,'status':'unverified'})
+                issues.append('수치 표기가 독립 검산기의 지원 범위를 벗어나 해당 등식을 검증하지 못했습니다.')
     canonical=re.sub(r'\s+','',text).replace('\\left','').replace('\\right','').replace('\\cdot','').replace('\\mid','|').replace('*','').replace('$','')
     canonical=re.sub(r'(?<=\))(?:은|는)(?=[pP]\()', '=',canonical)
     # A recurrent PDF extraction failure joins the numerator to the left-hand

@@ -40,7 +40,7 @@ def previous_context(agent):
 def task_for(request):
     if request.task != 'auto':
         return request.task
-    if re.search(r'그림|피규어|도표|도식|\bfigure\b|\bdiagram\b', request.message, re.I):
+    if re.search(r'그림|피규어|도표|도식|그래프|(?:이|현재|해당)\s*표(?=\s|[을를의가은는]|$)|\bfigure\b|\bdiagram\b|\btable\b|[xy]\s*축', request.message, re.I):
         return 'figure'
     if re.search(r'번역|\btranslat', request.message, re.I):
         return 'translate'
@@ -65,10 +65,15 @@ def resolve(agent):
     r = agent.req
     old, turns = previous_context(agent)
     requested = page_request(r.message)
+    relative=re.search(r'(다음|이전|앞)\s*페이지',r.message)
+    comparison=bool(relative and re.search(r'비교|차이',r.message))
+    if relative and not requested and not comparison:
+        requested=(r.page+(1 if relative[1]=='다음' else -1),'pdf')
+    comparison_pages=[r.page+(1 if relative[1]=='다음' else -1),r.page] if comparison else []
     new_selection=bool(r.selection and (not old or r.page!=old['page'] or r.selection!=old.get('selection','')))
     current_page=bool(re.search(r'이\s*페이지|현재\s*페이지|여기|this page',r.message,re.I))
     new_visible_page=bool(old and current_page and r.page!=old['page'])
-    follow = bool(old and not new_selection and not new_visible_page and re.search(r'더|자세|짧|쉽게|다시|앞서|이전|방금|예제|예시|설명하라고|설명해|설명해\s*줘|explain|again', r.message, re.I))
+    follow = bool(old and not new_selection and not new_visible_page and re.search(r'더|자세|짧|쉽게|다시|앞서|이전|아까|방금|그\s*(?:수식|분모|개념)|예제|예시|설명하라고|설명해|설명해\s*줘|explain|again', r.message, re.I))
     page = old['page'] if old and not new_visible_page else r.page
     selection = r.selection
     if selection:
@@ -81,6 +86,14 @@ def resolve(agent):
     if not book:
         raise ValueError('현재 교과서를 찾을 수 없습니다.')
     with pymupdf.open(data_path()/'pdfs'/f"{r.book_id}.pdf") as pdf:
+        if comparison:
+            page=r.page;selection='';topic=r.message;basis='pdf'
+            if comparison_pages[0]<1:
+                agent.reading_notice='첫 PDF 페이지에는 이전 페이지가 없습니다.'
+                comparison_pages=[]
+            elif comparison_pages[0]>len(pdf):
+                agent.reading_notice='마지막 PDF 페이지에는 다음 페이지가 없습니다.'
+                comparison_pages=[]
         if requested:
             number, basis = requested
             labels = pdf.get_page_numbers(str(number), only_one=False) if pdf.get_page_labels() else []
@@ -125,7 +138,10 @@ def resolve(agent):
                              'want_example':agent.task=='detail' and not re.search(r'예제\s*없이|예시\s*없이|without examples?',r.message,re.I) and bool(re.search(r'예제|예시|examples?',r.message,re.I) or (follow and (old or {}).get('want_example'))),
                              'requested_page': requested[0] if requested and not pending else None if new_selection or new_visible_page else (old or {}).get('requested_page')}
     agent.reading_turns = [turn for turn in turns if turn['page']==page] if follow else []
-    agent.page_focus = bool(requested or selection or follow or current_page)
+    if comparison_pages:agent.reading_context['comparison_pages']=comparison_pages
+    intent_only=re.sub(r'쉽게|자세히|수식|개념|계산|숫자|예제|설명|진단|핵심|이것|이거|뭐야|해줘|해|줘|과|와|을|를|이|은','',r.message)
+    generic=not re.sub(r'[\s?!.,]','',intent_only)
+    agent.page_focus = bool(requested or selection or follow or current_page or comparison or generic)
     # A restored learner target is data. No old AI answer becomes evidence.
     return agent.reading_context
 
@@ -138,7 +154,7 @@ def figure_notice(agent, rows):
         for block in page.get_text('blocks', sort=True):
             text = block[4].strip()
             # A caption starts with a figure label; body references do not count.
-            if re.match(r'^(?:Figure|Fig\.?|그림)\s*\d', text, re.I):
+            if re.match(r'^(?:Figure|Fig\.?|Table|그림|표)\s*\d', text, re.I):
                 captions.append(re.sub(r'\s+', ' ', text))
         agent.figure_context = {'visual_analysis': False, 'captions': captions,
                                 'page_image_url': f'/api/books/{agent.req.book_id}/pages/{agent.req.page}/math-image'}
@@ -146,7 +162,7 @@ def figure_notice(agent, rows):
     printed = agent.reading_context.get('printed_page')
     if printed:
         label += f' (인쇄 {printed}쪽)'
-    text = f'{label}의 그림을 직접 해석하는 기능은 현재 지원하지 않습니다. Qwen3 8B는 텍스트 전용이므로 그림의 모양이나 관계를 추측하지 않았습니다.'
+    text = f'{label}의 그림·표 이미지를 직접 해석하는 기능은 현재 지원하지 않습니다. Qwen3 8B는 텍스트 전용이므로 그림의 모양이나 축·셀의 관계를 추측하지 않았습니다.'
     if captions:
         text += '\n\n실제 페이지에서 추출한 그림 번호·캡션(이미지 분석 결과가 아닙니다):\n\n' + '\n\n'.join(captions)
         if len(captions) > 1:
@@ -154,5 +170,5 @@ def figure_notice(agent, rows):
     else:
         text += '\n\n이 페이지에서 그림 번호로 시작하는 캡션을 확인하지 못했습니다. 본문의 그림 참조만으로 그림이 있다고 단정하지 않습니다.'
     text += '\n\nPDF 원문에서 그림을 확인해 주세요. 텍스트와 캡션의 설명은 별도로 질문할 수 있습니다.'
-    agent.cited_ids.update(row['id'] for row in rows if re.search(r'Figure|Fig\.|그림', row['text'], re.I))
+    agent.cited_ids.update(row['id'] for row in rows if re.search(r'Figure|Fig\.|Table|그림|표', row['text'], re.I))
     return text

@@ -167,3 +167,47 @@ def test_observed_expected_loss_errors_keep_hard_warnings():
     assert any(check['status']=='fail' for check in assess(unsupported,'',[])['math_checks'])
     individual='제곱 손실의 개별 관측 예시: $(2.5-3)^2=0.25$. 이 계산만으로 최적성을 판단할 수 없습니다.'
     assert not assess(individual,'',[])['issues']
+
+
+def test_relative_pages_and_comparison_use_both_actual_pages(client,reading_book):
+    following,_=run(reading_book,'다음 페이지 내용을 요약해 줘',page=2)
+    assert following['reading_context']['page']==3
+    compared,provider=run(reading_book,'이전 페이지와 지금 페이지의 차이는?',page=3)
+    assert compared['reading_context']['comparison_pages']==[2,3]
+    assert {source['page'] for source in compared['sources']}=={2,3}
+    assert any(message.get('content','').startswith('Comparison PDF page DATA') for message in provider.context if isinstance(message,dict))
+    compared,_=run(reading_book,'다음 페이지와 지금 페이지의 차이는?',page=2)
+    assert compared['reading_context']['comparison_pages']==[3,2]
+    assert {source['page'] for source in compared['sources']}=={2,3}
+    boundary,provider=run(reading_book,'다음 페이지와 비교해 줘',page=4)
+    assert not provider.calls and '마지막' in boundary['text']
+    boundary,provider=run(reading_book,'이전 페이지 설명해 줘',page=1)
+    assert not provider.calls and '범위' in boundary['text']
+
+
+def test_table_and_axes_requests_never_invoke_text_model(client,reading_book):
+    for message in ['이 표를 해석해 줘','그래프의 x축과 y축을 설명해 줘']:
+        result,provider=run(reading_book,message,page=3)
+        assert not provider.calls and result['task']=='figure'
+        assert result['figure_context']['visual_analysis'] is False
+
+
+def test_pdf_glyph_variants_do_not_require_one_contiguous_match(client,reading_book):
+    selected=SELECTION.replace('probability','probabi1ity').replace('distribution','distributi0n')
+    result,provider=run(reading_book,'한국어 번역',page=3,selection=selected,task='translate')
+    assert result['translation_source']==selected and provider.calls
+
+
+def test_unsupported_notation_is_not_a_proven_arithmetic_error():
+    from backend.quality import assess
+    unsupported=assess('$2 e^{-2*1} = 2 e^{-2}$','',[])
+    assert not any(c['status']=='fail' for c in unsupported['math_checks'])
+    assert any(c['status']=='unverified' for c in unsupported['math_checks'])
+    assert any(c['status']=='fail' for c in assess('$1/0 = 2$','',[])['math_checks'])
+
+
+def test_missing_search_evidence_does_not_cite_the_current_page(client,reading_book):
+    result,provider=run(reading_book,'유니콘 연금술을 설명해 줘',page=3)
+    assert not provider.calls
+    assert result['sources']==[]
+    assert '확인하지 못했습니다' in result['text']
