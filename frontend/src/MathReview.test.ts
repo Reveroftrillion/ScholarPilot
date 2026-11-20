@@ -5,7 +5,9 @@ import {MathResult,TaskStatus,QuizTrust,ManualReviewPanel} from './MathReview';
 
 it('shows the exact scope of independent math and never invents missing results',()=>{
  const html=renderToStaticMarkup(createElement(MathResult,{review:{status:'unverified',formula:'p(Y|X)',scope:'확률 해석 미검증',reason:'원문 확인 필요'}}));
- expect(html).toContain('미검증');expect(html).toContain('원문 확인 필요');expect(html).not.toContain('0.4');
+ expect(html).toBe('');
+ const calculation=renderToStaticMarkup(createElement(MathResult,{review:{status:'verified_calculation',expression:'joint/condition',exact:'3/10',scope:'확률 해석 미검증'}}));
+ expect(calculation).toContain('3/10');expect(calculation).toContain('확률 해석 미검증');expect(calculation).not.toContain('0.4');
 });
 it('distinguishes real phases and unverified quiz keys',()=>{
  expect(renderToStaticMarkup(createElement(TaskStatus,{phase:'generating'}))).toContain('생성 중');

@@ -57,6 +57,9 @@ def _invoke(agent,provider,messages,names,task):
     if getattr(agent,'strict_explanation',False):
         request={k:request[k] for k in ('book_id','page','selection','message','quiz_id','answer','_local_task')}
         request['_reliable']=True
+        if getattr(agent,'task',None):
+            request['_reading_task']=agent.task
+            request['reading_context']={k:v for k,v in agent.reading_context.items() if k!='selection'}
     turn=[{'role':'user','content':_json(request)},*messages]
     agent.usage['api_calls']+=1
     agent.phase('generating')

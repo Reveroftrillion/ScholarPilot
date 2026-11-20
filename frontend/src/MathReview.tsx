@@ -32,7 +32,7 @@ export function MathInputPanel({bookId,page,onChange}:{bookId:string;page:number
 }
 
 export function MathResult({review}:{review?:MathReview}){
- if(!review||review.status==='not_supplied')return null;
+ if(!review||review.status==='not_supplied'||(!review.expression&&!review.comparison&&review.exact===undefined&&review.status!=='failed'))return null;
  return <section className="math-result" aria-label="독립 수학 검증 결과"><strong>Python 독립 확인 · {review.status}</strong>{review.formula&&<p>사용자 입력 수식: {review.formula} · {review.source_confirmed?'사용자 원문 대조 확인':'원문 대조 미확인'}</p>}{review.bindings&&<p>입력값: {Object.entries(review.bindings).map(([k,v])=>`${k}=${v}`).join(', ')}</p>}{review.comparison&&<p>{review.expression} =? {review.comparison}</p>}{review.exact!==undefined&&<p>{review.expression} = {review.exact}</p>}{review.reason&&<p>{review.reason}</p>}{review.conditions?.map(c=><p key={c}>조건: {c}</p>)}<small>{review.scope}</small></section>;
 }
 

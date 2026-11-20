@@ -31,6 +31,7 @@ class ChatRequest(StrictModel):
     answer: str | None = Field(default=None,max_length=2000)
     learning_mode: Literal['basic','deep']='basic'
     math_input: MathInput | None=None
+    task: Literal['auto','translate','explain','detail','figure'] = 'auto'
 
 class SearchArgs(StrictModel):
     query: str = Field(min_length=1,max_length=1000)
@@ -85,7 +86,7 @@ def tool_schemas(baseline=False):
 
 class Agent:
     def __init__(self, request: ChatRequest, provider=None,progress=None):
-        self.req = request
+        self.req = request.model_copy(deep=True)
         self.provider = provider
         self.progress=progress
         self.sources = {}
@@ -418,7 +419,7 @@ class Agent:
             if not self.quiz:
                 pending=one('SELECT q.id FROM quizzes q LEFT JOIN attempts a ON a.quiz_id=q.id WHERE q.session_id=? AND a.id IS NULL ORDER BY q.rowid DESC LIMIT 1',(self.session_id,))
                 if pending:self.quiz=learning.public_quiz(pending['id'])
-            if (self.req.selection and re.search(r'[=∑∫√∂∇±≤≥^_]|\\[a-zA-Z]',self.req.selection)) or re.search(r'수식|equation|formula',self.req.message,re.I):
+            if not getattr(self,'strict_explanation',False) and ((self.req.selection and re.search(r'[=∑∫√∂∇±≤≥^_]|\\[a-zA-Z]',self.req.selection)) or re.search(r'수식|equation|formula',self.req.message,re.I)):
                 self.text+='\n\n⚠️ PDF에서 추출한 수식에는 기호나 위치가 빠질 수 있습니다. PDF 원본과 대조하세요.'
             if self.evaluation and self.evaluation.get('requested_answer_was_ignored'):
                 self.text+='\n\n이 문제는 이미 제출되어 이전 채점 결과를 보여줍니다. 새 답안은 저장하지 않았습니다.'
@@ -428,20 +429,18 @@ class Agent:
                 if getattr(self,'strict_explanation',False):
                     if not getattr(self,'server_explanation',False):
                         self.quality['prose_status']='unverified_model_explanation'
-                        self.quality['issues'].append('AI 개념 설명의 의미 정확성은 미검증입니다. 원문 대조 전 확정된 학습 지식으로 처리하지 않습니다.')
-                    self.quality['limits']='Python 검산 범위와 AI 개념 설명은 별개입니다. AI 문장의 의미·원문 해석·유도 정확성은 자동 인증하지 않았습니다.'
+                    self.quality['limits']='AI 번역·설명은 원문과 대조해야 합니다. 자동 검사는 모든 의미·유도의 정확성을 보장하지 않습니다.'
                     self.phase('verifying')
-                    # The LLM's prose is not a math proof. Any newly generated
-                    # formula or numeric equality is held as an untrusted draft.
-                    risky=bool(re.search(r'[=∫∑]|\\(?:frac|int|sum)|[pP]\(',self.text))
+                    # Notation alone is not a detected error. Preserve the
+                    # actual explanation while keeping known failures prominent.
+                    risky=any(check['status']=='fail' for check in self.quality['math_checks'])
                     if risky and not self.evaluation and not getattr(self,'server_explanation',False):
                         self.draft=self.text
-                        self.text='AI 초안에 검증되지 않은 수식이 포함되어 설명 확정을 보류했습니다. 아래 원문과 수식 확인 결과를 대조하세요.'
-                        self.quality['issues'].append('모델이 생성한 수식은 원문·독립 계산의 검증 결과로 대체하지 않았습니다.')
+                        self.text='AI 설명에서 수식 오류가 감지되었습니다. 아래 상세 검사와 원문을 확인하세요.'
                     if getattr(self,'math_review',{}).get('status') in ('failed','unverified'):
                         self.quality['issues'].append('입력 수식·계산이 확인되지 않았습니다. 수식 유도는 확정하지 않습니다.')
                     if re.search(r'유도|deriv',self.req.message,re.I) and getattr(self,'math_review',{}).get('status')!='verified_identity':
-                        self.quality['issues'].append('요청한 유도는 검증하지 못했습니다. 확인된 계산과 개념 설명만 제공합니다.')
+                        self.quality['issues'].append('수식 유도의 일반적인 정확성은 자동 검증하지 않았습니다.')
                 from .quality import unsupported_book_mentions
                 mentions=unsupported_book_mentions(self.text,getattr(self,'unmatched_books',[]))
                 if mentions:
@@ -450,15 +449,21 @@ class Agent:
                     if getattr(self,'strict_explanation',False):
                         self.draft=self.text
                         self.text='검색 근거가 없는 교과서를 AI 초안이 언급하여 설명 확정을 보류했습니다. 실제 검색 출처만 확인하세요.'
-                if self.quality['issues']:
+                if self.quality['issues'] or self.quality.get('prose_status'):
                     status='needs_review';self.quality['status']='needs_review'
                 if self.evaluation and self.evaluation.get('uncertain'):
                     status='needs_review';self.quality['status']='needs_review'
                     self.quality['issues'].append('의미 채점이 불확실하여 이해도를 낮추지 않았습니다.')
                 cited=[self.sources[cid] for cid in sorted(getattr(self,'cited_ids',())) if cid in self.sources]
-                if cited:
+                if cited and not hasattr(self,'reading_context'):
                     # Citation destinations come from validated server metadata.
                     self.text+='\n\n**원문 출처** · '+' · '.join(f"[{s['title']} · PDF {s['page']}p](#source-{s['id']})" for s in cited[:3])
+            if hasattr(self,'reading_context') and getattr(self,'page_focus',False) and self.task!='translate' and not getattr(self,'reading_notice',None):
+                context=self.reading_context
+                label=f"PDF {context['page']}페이지"
+                if context.get('printed_page'):label+=f" · 인쇄 {context['printed_page']}쪽"
+                if context.get('page_basis')=='assumed_pdf':label+=' (PDF 번호로 해석)'
+                self.text=f'**{label}**\n\n'+self.text
             if self.quiz: status = 'awaiting_answer'
         except Exception as exc:
             status = 'error'
@@ -468,7 +473,7 @@ class Agent:
                   'quiz':self.quiz,'evaluation':self.evaluation,'events':self.events,'status':status,
                   'mode':settings.ai_mode,'provider':settings.ai_provider,'usage':self.usage,'elapsed':round(time.monotonic()-start,3)}
         if hasattr(self,'quality'):result['quality']=self.quality
-        for field in ('math_review','draft'):
+        for field in ('math_review','draft','task','reading_context','translation_source','figure_context'):
             if hasattr(self,field):result[field]=getattr(self,field)
         if getattr(self,'strict_explanation',False):result['explanation_origin']='server_verification' if getattr(self,'server_explanation',False) else 'local_model_unverified'
         with db() as c:

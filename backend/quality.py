@@ -86,6 +86,25 @@ def probability_checks(text):
 
 def assess(text,question,source_ids):
     issues=[];checks=[]
+    # An observed model example lists two bare joint-density values, then
+    # incorrectly treats one observation's loss as proof of an optimum.
+    # This is a bounded rejection of that malformed claim, not an optimizer.
+    example=text.split('### 설명을 위한 예시',1)[-1]
+    if (re.search(r'제곱\s*손실|squared\s*loss',example,re.I)
+            and re.search(r'[pP]\(\s*x\s*,\s*t\s*\)\s*=\s*\d*\.?\d+\s*,\s*\d*\.?\d+',example)
+            and re.search(r'최적\s*예측|optimal',example,re.I)):
+        checks.append({'kind':'unsupported squared-loss optimum from incomplete joint distribution','status':'fail'})
+        issues.append('예제의 결합분포에 대응하는 관측값이 없고, 개별 손실 계산만으로 최적 예측값을 단정했습니다. 기대 손실·최적성 결론을 확인하세요.')
+    # A known extraction/generation error on the expected-loss page leaves
+    # a differential in the variational derivative but drops its integral.
+    for line in text.splitlines():
+        compact=re.sub(r'\s+','',line)
+        if ('E[L]' in compact and ('δ' in compact or '\\delta' in compact)
+                and ('δf(' in compact or '\\deltaf(' in compact)
+                and re.search(r'dt(?:[=$.,]|$)',compact)
+                and '∫' not in compact and '\\int' not in compact):
+            checks.append({'kind':'expected-loss derivative missing integral','status':'fail'})
+            issues.append('기대 손실의 변분 미분식에서 적분 기호가 누락되었습니다. 원문 수식을 확인하세요.')
     probabilities=probability_checks(text);checks.extend(probabilities)
     if any(check['status']=='fail' for check in probabilities):issues.append('조건부확률의 값이 제시된 결합확률·주변확률과 일치하지 않습니다.')
     expressions=re.findall(r'\$\$([\s\S]*?)\$\$|(?<!\$)\$([^$\n]+)\$',text)

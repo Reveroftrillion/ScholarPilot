@@ -2,7 +2,13 @@ import type {Run} from './api';
 
 export function QualityNotice({quality}:{quality:Run['quality']}){
  if(!quality)return null;
- return quality.issues.length?<div className="ai-unavailable quality-notice" role="status"><strong>검토가 필요한 AI 설명입니다.</strong>{quality.issues.map((issue,i)=><span key={i}>{issue}</span>)}<small>{quality.limits}</small></div>:<small className="muted quality-notice">{quality.prose_status?'AI 개념 설명 · 의미 정확성 미검증 · 교과서 원문과 대조하세요.':'일부 자동 검사 통과 · 설명 전체의 정확성을 보증하지 않습니다.'}</small>;
+ const mathFailed=quality.math_checks.some(check=>!!check&&typeof check==='object'&&'status' in check&&check.status==='fail');
+ const hasAIWarning=!!quality.prose_status||quality.issues.length>0;
+ if(!hasAIWarning&&!quality.math_checks.length)return null;
+ return <div className={'quality-notice '+(mathFailed?'math-warning':'')}>
+  {(mathFailed||hasAIWarning)&&<small role="status">{mathFailed?'수식 오류가 발견되었습니다. 원문과 검산 결과를 확인하세요.':'AI 응답 · 정확성 미검증, 원문과 대조하세요.'}</small>}
+  {(quality.issues.length>0||quality.limits||quality.math_checks.length>0)&&<details className="quality-details"><summary>검증 상세</summary>{quality.issues.map((issue,i)=><p key={i}>{issue}</p>)}{quality.limits&&<p>{quality.limits}</p>}{quality.math_checks.length>0&&<pre>{JSON.stringify(quality.math_checks,null,2)}</pre>}</details>}
+ </div>;
 }
 
 export function TracePanel({runs}:{runs:{request:string;run:Run}[]}){

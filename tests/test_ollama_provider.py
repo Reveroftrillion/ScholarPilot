@@ -321,6 +321,171 @@ def test_json_explanation_requires_full_korean_text_and_preserves_it(monkeypatch
     assert 'tools' not in captured[0]
 
 
+def test_reading_translation_accepts_short_complete_korean_and_keeps_full_selection(monkeypatch):
+    monkeypatch.setattr(settings,'ollama_tool_format','json')
+    selection='A random variable X may take a value xi. p(X=xi) and p(xi) use different notation.'
+    translated='확률변수 X는 값 xi를 가질 수 있습니다. p(X=xi)와 p(xi)는 서로 다른 표기입니다.'
+    action={'tool':'explain_concept','arguments':{'text':translated,'source_ids':['actual-48']}}
+    captured=[]
+    def transport(request):
+        captured.append(json.loads(request.content))
+        return httpx.Response(200,json={'message':{'content':json.dumps(action,ensure_ascii=False)},'done_reason':'stop'})
+    request={'book_id':'bishop','page':48,'message':'한국어 번역','selection':selection,
+             '_local_task':'explain','_reading_task':'translate','_reliable':True}
+    evidence={'type':'function_call_output','call_id':'real-page','output':json.dumps([
+        {'id':'actual-48','book_id':'bishop','page':48,'text':selection}])}
+    with httpx.Client(transport=httpx.MockTransport(transport)) as client:
+        response=OllamaProvider(client).respond([{'role':'user','content':json.dumps(request)},evidence],
+                                                [t for t in tool_schemas() if t['name']=='explain_concept'])
+    body=captured[0]
+    assert json.loads(response.output[0].arguments)['text']==translated
+    sent=next(json.loads(m['content']) for m in body['messages'] if m.get('content','').startswith('{"book_id"'))
+    assert sent['selection']==selection and sent['page']==48 and sent['_reading_task']=='translate'
+    schema=body['format']['properties']['arguments']['properties']
+    assert schema['text']['minLength']==1
+    assert schema['source_ids']['items']['enum']==['actual-48']
+    assert body['options']['num_predict']>480
+    assert not body['truncate'] and not body['shift']
+
+
+def test_reading_detail_has_room_for_substantive_answer_and_retains_target(monkeypatch):
+    monkeypatch.setattr(settings,'ollama_tool_format','json')
+    answer=('이 페이지의 핵심 개념과 기호를 먼저 구분합니다. 조건과 관계를 단계별로 살펴보고, '
+            '원문에서 확인할 수 없는 부분은 추측하지 않습니다. 설명을 위한 예시는 교과서 사례와 구분합니다. ')*4
+    captured=[]
+    example='설명을 위한 예시로 $t=1,3$이 각각 확률 $0.5$이면 평균은 $2$입니다.'
+    action={'tool':'explain_concept','arguments':{'text':answer,'source_ids':['actual-140'],'example':example}}
+    def transport(request):
+        captured.append(json.loads(request.content))
+        return httpx.Response(200,json={'message':{'content':json.dumps(action,ensure_ascii=False)},'done_reason':'stop'})
+    request={'book_id':'bishop','page':140,'selection':'Actual PDF 140 content, including f(x).',
+             'message':'너무 짧아. 수식과 예제까지 자세히 설명해 줘',
+             '_local_task':'explain','_reading_task':'detail','_reliable':True}
+    evidence={'type':'function_call_output','call_id':'real-page','output':json.dumps([
+        {'id':'actual-140','book_id':'bishop','page':140,'text':request['selection']}])}
+    with httpx.Client(transport=httpx.MockTransport(transport)) as client:
+        response=OllamaProvider(client).respond([{'role':'user','content':json.dumps(request)},evidence],
+                                                [t for t in tool_schemas() if t['name']=='explain_concept'])
+    body=captured[0]
+    normalized=json.loads(response.output[0].arguments)
+    assert normalized=={'text':answer.rstrip()+'\n\n### 설명을 위한 예시\n\n'+example,'source_ids':['actual-140']}
+    assert 1000<body['options']['num_predict']<=1600
+    assert body['options']['num_ctx']<=4096
+    assert body['format']['properties']['arguments']['properties']['text']['maxLength']>1000
+    assert 'example' in body['format']['properties']['arguments']['required']
+    assert '수식을 직접 생성하지 마세요' not in body['messages'][-2]['content']
+
+
+@pytest.mark.parametrize('wire_extra',[
+    {},{'example':''},{'example':2},
+    {'example':'숫자 없이 추상적인 내용만 다시 설명하는 예시입니다.'},
+    {'example':'$t=1$일 때 제곱 오차는 $(2-1)^2=1$입니다.','unexpected':'not allowed'},
+])
+def test_requested_detail_example_cannot_be_omitted_empty_or_an_unknown_field(monkeypatch,wire_extra):
+    monkeypatch.setattr(settings,'ollama_tool_format','json')
+    answer='해당 페이지의 실제 수식과 문단을 단계별로 설명하고 필요한 기호와 성립 조건을 구분합니다. '*7
+    calls=[]
+    def transport(request):
+        calls.append(request)
+        action={'tool':'explain_concept','arguments':{'text':answer,'source_ids':['actual-140'],**wire_extra}}
+        return httpx.Response(200,json={'message':{'content':json.dumps(action,ensure_ascii=False)},'done_reason':'stop'})
+    request={'book_id':'bishop','page':140,'message':'수식과 예제까지 자세히 설명해 줘',
+             '_local_task':'explain','_reading_task':'detail','_reliable':True}
+    evidence={'type':'function_call_output','call_id':'real-page','output':json.dumps([
+        {'id':'actual-140','book_id':'bishop','page':140,'text':'Actual PDF text.'}])}
+    with httpx.Client(transport=httpx.MockTransport(transport)) as client:
+        with pytest.raises(ValueError,match='JSON 행동'):
+            OllamaProvider(client).respond([{'role':'user','content':json.dumps(request)},evidence],
+                                          [t for t in tool_schemas() if t['name']=='explain_concept'])
+    assert len(calls)==1
+
+
+@pytest.mark.parametrize('want_example',[True,False])
+def test_detail_example_contract_follows_persisted_intent(monkeypatch,want_example):
+    monkeypatch.setattr(settings,'ollama_tool_format','json')
+    answer='직전 페이지의 실제 기호와 조건을 유지하며 단계별로 자세히 설명합니다. '*10
+    args={'text':answer,'source_ids':['actual-140']}
+    if want_example:args['example']='$t=1,3$이고 두 값의 확률이 $0.5$이면 조건부 평균은 $2$입니다.'
+    captured=[]
+    def transport(request):
+        captured.append(json.loads(request.content))
+        return httpx.Response(200,json={'message':{'content':json.dumps({'tool':'explain_concept','arguments':args},ensure_ascii=False)},'done_reason':'stop'})
+    request={'book_id':'bishop','page':140,'message':'설명하라고',
+             'reading_context':{'want_example':want_example},
+             '_local_task':'explain','_reading_task':'detail','_reliable':True}
+    evidence={'type':'function_call_output','call_id':'real-page','output':json.dumps([
+        {'id':'actual-140','book_id':'bishop','page':140,'text':'Actual PDF text.'}])}
+    with httpx.Client(transport=httpx.MockTransport(transport)) as client:
+        response=OllamaProvider(client).respond([{'role':'user','content':json.dumps(request)},evidence],
+                                               [t for t in tool_schemas() if t['name']=='explain_concept'])
+    schema=captured[0]['format']['properties']['arguments']
+    assert ('example' in schema['required']) is want_example
+    assert ('설명을 위한 예시' in json.loads(response.output[0].arguments)['text']) is want_example
+
+
+@pytest.mark.parametrize('task,think,budget',[
+    ('translate',True,1800),('explain',False,1000),('detail',False,1400),
+])
+def test_reading_thinking_is_translation_only_and_never_returned(monkeypatch,task,think,budget):
+    monkeypatch.setattr(settings,'ollama_tool_format','json')
+    monkeypatch.setattr(settings,'ollama_num_predict',1000)
+    hidden='PRIVATE_MODEL_REASONING_MUST_NOT_LEAK'
+    answer=('확률변수와 그 변수가 가질 수 있는 값은 구분해야 합니다. 분포를 나타내는 표기와 특정 값에서 '
+            '평가한 값을 나타내는 표기를 원문 문맥에 맞추어 구분하여 읽습니다. ')*4
+    action={'tool':'explain_concept','arguments':{'text':answer,'source_ids':['actual-48']}}
+    captured=[]
+    def transport(request):
+        captured.append(json.loads(request.content))
+        return httpx.Response(200,json={'message':{
+            'thinking':hidden,'content':json.dumps(action,ensure_ascii=False)},'done_reason':'stop'})
+    request={'book_id':'bishop','page':48,'selection':'Actual source content.',
+             'message':'해당 문장을 처리해 주세요','_local_task':'explain','_reading_task':task,'_reliable':True}
+    evidence={'type':'function_call_output','call_id':'real-page','output':json.dumps([
+        {'id':'actual-48','book_id':'bishop','page':48,'text':request['selection']}])}
+    with httpx.Client(transport=httpx.MockTransport(transport)) as client:
+        provider=OllamaProvider(client)
+        response=provider.respond([{'role':'user','content':json.dumps(request)},evidence],
+                                  [t for t in tool_schemas() if t['name']=='explain_concept'])
+    assert captured[0]['think'] is think
+    assert captured[0]['options']['num_predict']==budget
+    assert captured[0]['options']['num_ctx']<=4096
+    assert json.loads(response.output[0].arguments)==action['arguments']
+    assert hidden not in repr(response) and hidden not in json.dumps(provider.metrics)
+    assert response.output_text==''
+
+
+@pytest.mark.parametrize('text,source',[
+    ('English source repeated unchanged.','actual-48'),
+    ('한국어 번역입니다.','fabricated'),
+])
+def test_reading_translation_still_rejects_english_echo_and_fake_sources(monkeypatch,text,source):
+    monkeypatch.setattr(settings,'ollama_tool_format','json')
+    calls=[]
+    def transport(request):
+        calls.append(request)
+        action={'tool':'explain_concept','arguments':{'text':text,'source_ids':[source]}}
+        return httpx.Response(200,json={'message':{'content':json.dumps(action,ensure_ascii=False)},'done_reason':'stop'})
+    request={'book_id':'bishop','page':48,'selection':'The original sentence.',
+             'message':'한국어 번역','_local_task':'explain','_reading_task':'translate','_reliable':True}
+    evidence={'type':'function_call_output','call_id':'real-page','output':json.dumps([
+        {'id':'actual-48','book_id':'bishop','page':48,'text':request['selection']}])}
+    with httpx.Client(transport=httpx.MockTransport(transport)) as client:
+        with pytest.raises(ValueError,match='JSON 행동'):
+            OllamaProvider(client).respond([{'role':'user','content':json.dumps(request)},evidence],
+                                          [t for t in tool_schemas() if t['name']=='explain_concept'])
+    assert len(calls)==1
+
+
+def test_text_provider_does_not_guess_figure_content(monkeypatch):
+    monkeypatch.setattr(settings,'ollama_tool_format','json')
+    calls=[]
+    with httpx.Client(transport=httpx.MockTransport(lambda req:calls.append(req))) as client:
+        with pytest.raises(ValueError,match='그림을 직접 볼 수 없습니다'):
+            OllamaProvider(client).respond([{'role':'user','content':json.dumps({
+                'book_id':'bishop','page':140,'message':'그림 설명','_reading_task':'figure'})}],tool_schemas())
+    assert not calls
+
+
 def test_json_action_cannot_use_an_unretrieved_source_id(monkeypatch):
     monkeypatch.setattr(settings,'ollama_tool_format','json')
     explanation='한국어로 조건부확률과 베이즈 정리의 의미를 설명하고 원문에 나타난 가정을 명확하게 확인합니다. '*3

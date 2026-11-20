@@ -6,8 +6,15 @@ import type {Run} from './api';
 
 it('shows incomplete math as review required rather than a quality score',()=>{
  const html=renderToStaticMarkup(createElement(QualityNotice,{quality:{status:'needs_review',issues:['숫자 예제를 검증하지 못했습니다.'],limits:'모든 수학을 증명하지 않습니다.',math_checks:[]}}));
- expect(html).toContain('검토가 필요한');expect(html).toContain('숫자 예제');expect(html).not.toContain('100%');
+ expect(html).toContain('AI 응답 · 정확성 미검증');expect(html).toContain('<details');expect(html).toContain('숫자 예제');expect(html).not.toContain('100%');
+ expect(html).not.toContain('<details open');
  expect(renderToStaticMarkup(createElement(QualityNotice,{quality:undefined}))).toBe('');
+ expect(renderToStaticMarkup(createElement(QualityNotice,{quality:{status:'checked',issues:[],limits:'일반 검증 범위 안내',math_checks:[]}}))).toBe('');
+});
+
+it('keeps a definite math failure visible above collapsed diagnostics',()=>{
+ const html=renderToStaticMarkup(createElement(QualityNotice,{quality:{status:'needs_review',issues:['산술 등식이 틀렸습니다.'],limits:'독립 확인 범위',math_checks:[{status:'fail'}]}}));
+ expect(html).toContain('수식 오류가 발견되었습니다.');expect(html).toContain('산술 등식이 틀렸습니다.');
 });
 
 it('distinguishes server orchestration, actual generated actions, and legacy records',()=>{
