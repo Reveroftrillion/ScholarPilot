@@ -1,5 +1,23 @@
 # ScholarPilot
 
+## 다른 Windows PC에서 개발 이어가기
+
+Python과 Node.js/npm, Git을 설치한 뒤 다음을 실행합니다. `.env.example`은 현재 로컬 AI 설정을 포함하며 API 키는 비어 있습니다. 기존 `.env`가 있으면 덮어쓰지 않습니다.
+
+```powershell
+git clone https://github.com/Reveroftrillion/ScholarPilot.git
+cd ScholarPilot
+.\scripts\setup.ps1
+if (-not (Test-Path -LiteralPath .env)) { Copy-Item .env.example .env }
+.\scripts\setup-ollama.ps1
+.\.venv\Scripts\python.exe scripts/import_books.py Books
+.\scripts\start.ps1
+```
+
+접속 주소는 `http://127.0.0.1:8000`입니다. `Books`의 PDF가 없는 체크아웃에서는 본인 교과서를 해당 폴더에 복사한 뒤 import 명령을 실행하세요. Ollama 실행 파일과 모델은 새 PC에서 다시 설치합니다. 기존 PC의 `.venv`, `node_modules`, `dist`를 복사할 필요는 없습니다. 새 PC에서도 기본 모델은 `qwen3:1.7b`이며 자동으로 더 큰 모델을 선택하지 않습니다.
+
+`.env` 원본에는 API 키가 있어 Git에 포함하지 않습니다. 로컬 Ollama에는 키가 필요 없으므로 예제 복사만으로 설정할 수 있습니다. 학습 기록·검색 DB·모델·시험 데이터가 있는 `data/`도 Git 제외 대상입니다. **기존 학습 기록까지 옮기려면 양쪽 ScholarPilot 서버를 종료하고 원래 PC의 `data/` 전체를 별도 저장장치로 새 PC의 `data/`에 복사하세요.** 새 PC에서 먼저 사용해 기록이 생겼다면 양쪽 데이터를 각각 백업하고 덮어쓰지 마세요. 이전 `data/`를 옮긴 경우 책 재등록 없이 기존 DB와 PDF 사본을 그대로 사용합니다.
+
 ## 최신 검증: 수학·채점 신뢰 경계 개선 (2026-11-19)
 
 기본 설명은 짧은 근거 문단으로 모델을 1회 호출합니다. `심화 학습`을 선택하거나 진단을 명시적으로 요청할 때만 선수 개념·문제를 진행합니다. AI 설명은 의미 정확성 **미검증**으로 표시하며, Python이 확인한 계산과 구분합니다. 현재 Qwen3 1.7B의 베이즈·PTQ/QAT 개념 설명은 실제 검토에서 실패했습니다. 신뢰할 수 있는 대학원 수식 교사로 완성된 상태는 아닙니다.
