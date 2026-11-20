@@ -2,8 +2,8 @@
 node_modules/
 dist/
 data/
-Books/
 *.pdf
+!Books/*.pdf
 .env*
 !.env.example
 .vscode/

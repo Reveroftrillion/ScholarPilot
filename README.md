@@ -14,7 +14,7 @@ if (-not (Test-Path -LiteralPath .env)) { Copy-Item .env.example .env }
 .\scripts\start.ps1
 ```
 
-접속 주소는 `http://127.0.0.1:8000`입니다. `Books`의 PDF가 없는 체크아웃에서는 본인 교과서를 해당 폴더에 복사한 뒤 import 명령을 실행하세요. Ollama 실행 파일과 모델은 새 PC에서 다시 설치합니다. 기존 PC의 `.venv`, `node_modules`, `dist`를 복사할 필요는 없습니다. 새 PC에서도 기본 모델은 `qwen3:1.7b`이며 자동으로 더 큰 모델을 선택하지 않습니다.
+접속 주소는 `http://127.0.0.1:8000`입니다. 이 비공개 저장소에는 `Books`의 Bishop·Introduction to Machine Learning Systems PDF 두 권을 포함합니다. 저장소에 접근할 수 있는 GitHub 계정으로 clone하세요. Ollama 실행 파일과 모델은 새 PC에서 다시 설치합니다. 기존 PC의 `.venv`, `node_modules`, `dist`를 복사할 필요는 없습니다. 새 PC에서도 기본 모델은 `qwen3:1.7b`이며 자동으로 더 큰 모델을 선택하지 않습니다.
 
 `.env` 원본에는 API 키가 있어 Git에 포함하지 않습니다. 로컬 Ollama에는 키가 필요 없으므로 예제 복사만으로 설정할 수 있습니다. 학습 기록·검색 DB·모델·시험 데이터가 있는 `data/`도 Git 제외 대상입니다. **기존 학습 기록까지 옮기려면 양쪽 ScholarPilot 서버를 종료하고 원래 PC의 `data/` 전체를 별도 저장장치로 새 PC의 `data/`에 복사하세요.** 새 PC에서 먼저 사용해 기록이 생겼다면 양쪽 데이터를 각각 백업하고 덮어쓰지 마세요. 이전 `data/`를 옮긴 경우 책 재등록 없이 기존 DB와 PDF 사본을 그대로 사용합니다.
 
@@ -44,7 +44,7 @@ if (-not (Test-Path -LiteralPath .env)) { Copy-Item .env.example .env }
 .\scripts\setup-ollama.ps1
 ```
 
-교과서 PDF, 기존 학습 기록, `.env`, Ollama 실행 파일과 모델은 저장소에 포함하지 않습니다. 처음 실행하면 서재에서 본인이 보유한 PDF를 추가하세요. Ollama와 모델 설치에는 인터넷 연결과 수 GB의 저장 공간이 필요합니다.
+`Books`의 PDF 두 권은 비공개 저장소에 포함합니다. 기존 학습 기록, `.env`, Ollama 실행 파일과 모델은 저장소에 포함하지 않습니다. 제공된 import 명령으로 교과서를 등록하거나 서재에서 추가할 수 있습니다. Ollama와 모델 설치에는 인터넷 연결과 수 GB의 저장 공간이 필요합니다.
 
 ```powershell
 .\scripts\start.ps1
@@ -145,7 +145,7 @@ npm run build
 
 ## 데이터 보호와 한계
 
-원본 사본·SQLite·추출문·학습 기록은 `data/`에 저장합니다. 백업하려면 서버 종료 후 전체 폴더를 복사하세요. 기존 `Books/` PDF와 사용자 학습 기록은 이번 로컬 전환에서 삭제하지 않습니다. `.env`, PDF, `Books/`, `data/`는 Git 제외 대상입니다.
+원본 사본·SQLite·추출문·학습 기록은 `data/`에 저장합니다. 백업하려면 서버 종료 후 전체 폴더를 복사하세요. 기존 `Books/` PDF와 사용자 학습 기록은 삭제하지 않습니다. `.env`, `data/` 및 `Books/` 밖의 PDF는 Git 제외 대상입니다. `Books/`의 PDF는 다른 PC에서 이어서 개발하기 위해 비공개 저장소에 포함합니다.
 
 시험 저장소·벤치마크·모델 다운로드 파일도 임의로 지우지 않습니다. `scripts/inspect_test_storage.py`는 용량을 조회하며 삭제하지 않습니다. 로컬 모델과 Ollama 설치물은 각각 `data/models`, `data/tools`에 있습니다.
 
