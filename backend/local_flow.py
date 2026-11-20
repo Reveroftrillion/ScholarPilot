@@ -55,7 +55,7 @@ def _invoke(agent,provider,messages,names,task):
     tools=[t for t in tool_schemas(agent.req.strategy=='baseline') if t['name'] in names]
     request={**agent.req.model_dump(),'_local_task':task}
     if getattr(agent,'strict_explanation',False):
-        request={k:request[k] for k in ('book_id','message','quiz_id','answer','_local_task')}
+        request={k:request[k] for k in ('book_id','page','selection','message','quiz_id','answer','_local_task')}
         request['_reliable']=True
     turn=[{'role':'user','content':_json(request)},*messages]
     agent.usage['api_calls']+=1
